@@ -1,18 +1,16 @@
 'use client'
-import { useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { formatDistanceToNow } from 'date-fns'
 import { USE_MOCK, MOCK_EXECUTIONS, MOCK_AGENT, apiFetch, tokenDecimals, tokenSymbol } from '@/lib/mock-data'
 import { txExplorerUrl } from '@/lib/constants'
-import type { Execution } from '@/types'
+import type { Execution, PaginatedResponse } from '@/types'
+import { useLocalStorageValue } from '@/lib/client-storage'
 
 // History executions use the strategy's tokenIn/tokenOut when available.
 // Fall back to WETH (18 dec) for amountIn and USDC (6 dec) for amountOut
 // to match the default DCA strategy direction.
 const WETH = '0x4200000000000000000000000000000000000006'
 const USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1'
-
-const fetcher = (url: string) => apiFetch<Execution[]>(url)
 
 function StatusBadge({ status }: { status: Execution['status'] }) {
   const styles = {
@@ -46,13 +44,15 @@ function ExecutionSkeleton() {
 // Execution type doesn't carry token addresses; use WETH/USDC as canonical defaults
 // for the standard DCA direction. Extend here when the API adds tokenIn/tokenOut.
 type ExecutionWithTokens = Execution & { tokenIn?: string; tokenOut?: string }
+type ExecutionHistoryResponse = PaginatedResponse<ExecutionWithTokens>
+
+const fetcher = async (url: string): Promise<ExecutionWithTokens[]> => {
+  const response = await apiFetch<ExecutionHistoryResponse>(url)
+  return response.data
+}
 
 export default function HistoryPage() {
-  const [agentId, setAgentId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
+  const agentId = useLocalStorageValue('hbc_agentId')
 
   const { data: executions, error, mutate, isLoading } = useSWR<ExecutionWithTokens[]>(
     agentId ? `/api/executions?agentId=${agentId}` : null,

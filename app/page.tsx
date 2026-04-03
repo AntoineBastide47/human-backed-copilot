@@ -1,20 +1,17 @@
 'use client'
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { VerifyButton } from '@/components/verify-button'
+import {
+  setLocalStorageValue,
+  useLocalStorageValue,
+} from '@/lib/client-storage'
 
 export default function HomePage() {
-  const [userId, setUserId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const stored = localStorage.getItem('hbc_userId')
-    if (stored) setUserId(stored)
-  }, [])
+  const userId = useLocalStorageValue('hbc_userId')
 
   const handleVerified = (uid: string, walletAddress: string) => {
-    localStorage.setItem('hbc_userId', uid)
-    localStorage.setItem('hbc_walletAddress', walletAddress)
-    setUserId(uid)
+    setLocalStorageValue('hbc_userId', uid)
+    setLocalStorageValue('hbc_walletAddress', walletAddress)
   }
 
   return (

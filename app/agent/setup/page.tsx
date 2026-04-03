@@ -3,6 +3,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { USE_MOCK, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
 import type { Agent } from '@/types'
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from '@/lib/client-storage'
 
 type SetupStatus = 'idle' | 'submitting' | 'registering' | 'active' | 'timeout' | 'error'
 
@@ -99,7 +103,7 @@ export default function AgentSetupPage() {
     try {
       if (USE_MOCK) {
         await new Promise(r => setTimeout(r, 600))
-        localStorage.setItem('hbc_agentId', MOCK_AGENT.id)
+        setLocalStorageValue('hbc_agentId', MOCK_AGENT.id)
         setAgentId(MOCK_AGENT.id)
         setSetupStatus('registering')
         // Simulate on-chain delay
@@ -108,7 +112,7 @@ export default function AgentSetupPage() {
         return
       }
 
-      const userId = localStorage.getItem('hbc_userId')
+      const userId = getLocalStorageValue('hbc_userId')
       if (!userId) {
         setError('Not verified. Go back and verify with World ID first.')
         setSetupStatus('error')
@@ -120,7 +124,7 @@ export default function AgentSetupPage() {
         body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
       })
 
-      localStorage.setItem('hbc_agentId', agent.id)
+      setLocalStorageValue('hbc_agentId', agent.id)
       setAgentId(agent.id)
       setSetupStatus('registering')
     } catch (err) {

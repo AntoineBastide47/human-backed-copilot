@@ -1,9 +1,17 @@
+import type {
+  Agent,
+  AgentStrategy,
+  Execution,
+  Proposal,
+  VerifyResponse,
+} from '@/types'
+
 // P2 owns this file
 // Toggle to false when P1's real routes are live
 // Search for USE_MOCK before Sync #5 to ensure all mocks are OFF
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
-export const MOCK_AGENT = {
+export const MOCK_AGENT: Agent = {
   id: 'mock-agent-1',
   ownerId: 'mock-user-1',
   walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
@@ -15,7 +23,7 @@ export const MOCK_AGENT = {
   createdAt: new Date().toISOString(),
 };
 
-export const MOCK_STRATEGIES = [
+export const MOCK_STRATEGIES: AgentStrategy[] = [
   {
     id: 'mock-strat-1', agentId: 'mock-agent-1', name: 'Daily ETH→USDC DCA',
     tokenIn: '0x4200000000000000000000000000000000000006',
@@ -25,7 +33,7 @@ export const MOCK_STRATEGIES = [
   },
 ];
 
-export const MOCK_PROPOSALS = [
+export const MOCK_PROPOSALS: Proposal[] = [
   {
     id: 'mock-prop-1', agentId: 'mock-agent-1', strategyId: 'mock-strat-1',
     type: 'dca_buy' as const,
@@ -37,7 +45,7 @@ export const MOCK_PROPOSALS = [
   },
 ];
 
-export const MOCK_EXECUTIONS = [
+export const MOCK_EXECUTIONS: Execution[] = [
   {
     id: 'mock-exec-1', agentId: 'mock-agent-1', strategyId: 'mock-strat-1',
     proposalId: 'mock-prop-0', txHash: '0xabc123def456789abcdef',
@@ -47,7 +55,7 @@ export const MOCK_EXECUTIONS = [
 ];
 
 // Verify mock response — matches VerifyResponse from types/index.ts
-export const MOCK_VERIFY = {
+export const MOCK_VERIFY: VerifyResponse = {
   userId: 'mock-user-1',
   verified: true,
   walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
@@ -72,8 +80,15 @@ export async function apiFetch<T>(
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error ?? `Request failed: ${res.status}`);
+    const body = await res.json().catch((): unknown => ({}));
+    const message =
+      typeof body === 'object' &&
+      body !== null &&
+      'error' in body &&
+      typeof body.error === 'string'
+        ? body.error
+        : `Request failed: ${res.status}`;
+    throw new Error(message);
   }
 
   return res.json() as Promise<T>;

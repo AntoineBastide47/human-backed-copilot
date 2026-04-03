@@ -1,4 +1,5 @@
 import type { ISuccessResult } from '@worldcoin/minikit-js';
+import type { TypedDataDomain, TypedDataParameter } from 'viem';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Shared types — P1 is the SOLE editor of this file.
@@ -95,9 +96,20 @@ export interface SwapResult {
   gasUsed?: string;
   error?: string;
 }
+export interface QuotePayload {
+  quote?: string;
+  quoteDecimals?: string;
+  gasUseEstimate?: string;
+  output?: { amount?: string };
+}
+export interface PermitData {
+  domain: TypedDataDomain;
+  types: Record<string, readonly TypedDataParameter[]>;
+  values: Record<string, unknown>;
+}
 export interface QuoteResult {
-  quote: any;
-  permitData?: any;
+  quote: QuotePayload;
+  permitData?: PermitData;
   gasEstimate?: string;
   txFailureReason?: string;
 }

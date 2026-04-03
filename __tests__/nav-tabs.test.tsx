@@ -1,14 +1,26 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { NavTabs } from '@/components/nav-tabs'
+
+type LinkProps = {
+  href: string
+  children: ReactNode
+  className?: string
+}
+
+type ProposalStub = {
+  id: string
+  status: 'pending' | 'approved' | 'rejected' | 'executed'
+}
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/'),
 }))
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, className }: any) => (
+  default: ({ href, children, className }: LinkProps) => (
     <a href={href} className={className}>{children}</a>
   ),
 }))
@@ -29,11 +41,11 @@ const swrData = {
     { id: 'p1', status: 'pending' },
     { id: 'p2', status: 'pending' },
     { id: 'p3', status: 'executed' },
-  ] as any[],
+  ] as ProposalStub[],
 }
 vi.mock('swr', () => ({
-  default: (_key: any, _fetcher: any, opts: any) => ({
-    data: swrData.data ?? opts?.fallbackData,
+  default: () => ({
+    data: swrData.data,
     error: undefined,
     mutate: vi.fn(),
   }),
@@ -50,7 +62,7 @@ beforeEach(() => {
     { id: 'p3', status: 'executed' },
   ]
   vi.stubGlobal('localStorage', {
-    getItem: (_k: string) => null,
+    getItem: () => null,
     setItem: vi.fn(),
   })
 })

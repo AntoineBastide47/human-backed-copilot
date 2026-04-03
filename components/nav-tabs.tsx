@@ -1,10 +1,10 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { USE_MOCK, MOCK_PROPOSALS, apiFetch } from '@/lib/mock-data'
 import type { Proposal } from '@/types'
+import { useLocalStorageValue } from '@/lib/client-storage'
 
 // Simple inline SVG tab icons — no external deps
 function HomeIcon({ active }: { active: boolean }) {
@@ -52,11 +52,7 @@ const fetcher = (url: string) => apiFetch<Proposal[]>(url)
 
 export function NavTabs() {
   const pathname = usePathname()
-  const [agentId, setAgentId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
+  const agentId = useLocalStorageValue('hbc_agentId')
 
   const { data: proposals } = useSWR<Proposal[]>(
     !USE_MOCK && agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
