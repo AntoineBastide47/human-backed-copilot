@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+
+// Set before any imports so requireSecret() finds it at module evaluation time
+process.env.JWT_SECRET = 'test-secret-minimum-32-characters-long!!';
+
 import jwt from 'jsonwebtoken';
 import {
   signSession,
