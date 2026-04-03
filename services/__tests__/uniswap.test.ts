@@ -11,7 +11,7 @@ vi.mock('../wallet', () => ({
   getPublicClient: vi.fn(() => ({
     waitForTransactionReceipt: vi.fn().mockResolvedValue({
       status: 'success',
-      gasUsed: 21000n,
+      gasUsed: BigInt(21000),
     }),
   })),
 }));
@@ -244,7 +244,7 @@ describe('executeSwap', () => {
 
   const mockSignTypedData = vi.fn().mockResolvedValue('0xsig123');
   const mockSendTransaction = vi.fn().mockResolvedValue('0xtxhash123');
-  const mockWaitForReceipt = vi.fn().mockResolvedValue({ status: 'success', gasUsed: 50000n });
+  const mockWaitForReceipt = vi.fn().mockResolvedValue({ status: 'success', gasUsed: BigInt(50000) });
 
   beforeEach(async () => {
     vi.resetModules();
@@ -415,7 +415,7 @@ describe('executeSwap', () => {
   });
 
   it('returns failure on reverted transaction', async () => {
-    mockWaitForReceipt.mockResolvedValueOnce({ status: 'reverted', gasUsed: 21000n });
+    mockWaitForReceipt.mockResolvedValueOnce({ status: 'reverted', gasUsed: BigInt(21000) });
 
     vi.stubGlobal(
       'fetch',
