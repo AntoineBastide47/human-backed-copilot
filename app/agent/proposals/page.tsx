@@ -1,114 +1,43 @@
 'use client'
 import { useState, useEffect } from 'react'
 import useSWR from 'swr'
-import { formatDistanceToNow } from 'date-fns'
 import { USE_MOCK, MOCK_PROPOSALS, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
-import { TOKEN_MAP, txExplorerUrl } from '@/lib/constants'
 import type { Proposal } from '@/types'
+import { ProposalCard } from '@/components/proposal-card'
 
 const fetcher = (url: string) => apiFetch<Proposal[]>(url)
 
-function tokenLabel(address: string) {
-  return TOKEN_MAP[address]?.symbol ?? address.slice(0, 6) + '...'
-}
-
-function ProposalCard({
-  proposal,
-  onApprove,
-  onReject,
-  approvingId,
-  rejectingId,
-}: {
-  proposal: Proposal & { txHash?: string }
-  onApprove: (id: string) => void
-  onReject: (id: string) => void
-  approvingId: string | null
-  rejectingId: string | null
-}) {
-  const isApproving = approvingId === proposal.id
-  const isRejecting = rejectingId === proposal.id
-  const busy = isApproving || isRejecting
-
-  const inDecimals = proposal.tokenIn === '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' ? 6 : 18
-  const outDecimals = proposal.tokenOut === '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' ? 6 : 18
-  const amountIn = (Number(BigInt(proposal.amount)) / 10 ** inDecimals).toFixed(4)
-  const amountOut = (Number(BigInt(proposal.estimatedOutput)) / 10 ** outDecimals).toFixed(2)
-
+function ProposalCardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3 animate-pulse">
       <div className="flex items-start justify-between">
-        <div>
-          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-            proposal.type === 'dca_buy' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-          }`}>
-            {proposal.type === 'dca_buy' ? 'DCA Buy' : 'Rebalance'}
-          </span>
-          <p className="mt-1 text-xs text-stone-400">
-            {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
-          </p>
+        <div className="space-y-1.5">
+          <div className="h-5 w-16 bg-stone-200 rounded-full" />
+          <div className="h-3 w-20 bg-stone-100 rounded" />
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-          proposal.status === 'pending'  ? 'bg-yellow-100 text-yellow-700' :
-          proposal.status === 'executed' ? 'bg-green-100 text-green-700'  :
-          proposal.status === 'rejected' ? 'bg-stone-100 text-stone-500'  :
-          'bg-blue-100 text-blue-700'
-        }`}>
-          {proposal.status}
-        </span>
+        <div className="h-5 w-14 bg-stone-100 rounded-full" />
       </div>
-
-      <div className="flex items-center gap-2 text-base font-semibold">
-        <span>{amountIn} {tokenLabel(proposal.tokenIn)}</span>
-        <span className="text-stone-300">→</span>
-        <span className="text-stone-500">~{amountOut} {tokenLabel(proposal.tokenOut)}</span>
+      <div className="h-5 w-40 bg-stone-200 rounded" />
+      <div className="h-3 w-full bg-stone-100 rounded" />
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="h-10 bg-stone-100 rounded-xl" />
+        <div className="h-10 bg-stone-200 rounded-xl" />
       </div>
-
-      <p className="text-xs text-stone-500 italic">{proposal.reasoning}</p>
-
-      {proposal.txHash && (
-        <a
-          href={txExplorerUrl(proposal.txHash)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block text-xs text-blue-600 underline truncate"
-        >
-          Tx: {proposal.txHash.slice(0, 20)}...
-        </a>
-      )}
-
-      {proposal.status === 'pending' && (
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            onClick={() => onReject(proposal.id)}
-            disabled={busy}
-            className="py-3 rounded-xl border border-stone-200 text-stone-600 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
-          >
-            {isRejecting ? 'Rejecting...' : 'Reject'}
-          </button>
-          <button
-            onClick={() => onApprove(proposal.id)}
-            disabled={busy}
-            className="py-3 rounded-xl bg-black text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
-          >
-            {isApproving ? 'Executing...' : 'Approve'}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
 
 export default function ProposalsPage() {
-  const [agentId, setAgentId] = useState<string | null>(null)
+  const [agentId, setAgentId]       = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
-  const [toasts, setToasts] = useState<{ id: string; msg: string; ok: boolean }[]>([])
+  const [toasts, setToasts]         = useState<{ id: string; msg: string; ok: boolean }[]>([])
 
   useEffect(() => {
     setAgentId(localStorage.getItem('hbc_agentId'))
   }, [])
 
-  const { data: proposals, mutate } = useSWR<(Proposal & { txHash?: string })[]>(
+  const { data: proposals, error, mutate, isLoading } = useSWR<(Proposal & { txHash?: string })[]>(
     agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
     fetcher,
     {
@@ -186,7 +115,22 @@ export default function ProposalsPage() {
         )}
       </div>
 
-      {!proposals || proposals.length === 0 ? (
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+          <p className="text-red-500 text-sm">Could not load proposals.</p>
+          <button
+            onClick={() => mutate()}
+            className="px-4 py-2 bg-black text-white rounded-xl text-sm font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      ) : isLoading && !proposals ? (
+        <div className="space-y-3">
+          <ProposalCardSkeleton />
+          <ProposalCardSkeleton />
+        </div>
+      ) : !proposals || proposals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
           <p className="text-stone-400 text-sm">No pending proposals.</p>
           <p className="text-stone-300 text-xs">Your agent is watching markets — check back soon.</p>
