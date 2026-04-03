@@ -4,8 +4,8 @@ import {
   createProposal,
   getApprovedProposals,
   markProposalExecuted,
+  getRecentProposal,
 } from '@/lib/agent-service';
-// TODO: Move getLastExecutionForStrategy and updateProposalStatus to lib/agent-service.ts (request from P1)
 import { db } from '@/lib/db';
 import type { AgentStrategy } from '@/types';
 
@@ -20,6 +20,7 @@ const INTERVAL_MS: Record<string, number> = {
 
 const activeLoops = new Map<string, NodeJS.Timeout>();
 const proposalRetries = new Map<string, number>();
+const executingProposals = new Set<string>();
 
 export function isLoopActive(agentId: string): boolean {
   return activeLoops.has(agentId);
@@ -28,8 +29,7 @@ export function isLoopActive(agentId: string): boolean {
 export async function startAgentLoop(agentId: string): Promise<void> {
   if (activeLoops.has(agentId)) return;
 
-  await runCycle(agentId);
-
+  // Register a placeholder so duplicate calls are blocked during the first cycle
   const interval = setInterval(async () => {
     try {
       await runCycle(agentId);
@@ -39,6 +39,9 @@ export async function startAgentLoop(agentId: string): Promise<void> {
   }, CYCLE_INTERVAL_MS);
 
   activeLoops.set(agentId, interval);
+
+  // Run first cycle immediately; if it stops the loop (e.g. agent paused), that's fine
+  await runCycle(agentId);
 }
 
 export async function stopAgentLoop(agentId: string): Promise<void> {
@@ -50,6 +53,17 @@ export async function stopAgentLoop(agentId: string): Promise<void> {
 }
 
 async function runCycle(agentId: string): Promise<void> {
+  const agent = await db.agent.findUnique({
+    where: { id: agentId },
+    select: { status: true },
+  });
+  if (!agent || agent.status !== 'active') {
+    if (agent?.status === 'paused') {
+      await stopAgentLoop(agentId);
+    }
+    return;
+  }
+
   const strategies = await getAgentStrategies(agentId);
 
   for (const strategy of strategies) {
@@ -73,6 +87,14 @@ async function processStrategy(
   agentId: string,
   strategy: AgentStrategy,
 ): Promise<void> {
+  // Deduplicate: skip if a pending/approved proposal already exists for this strategy
+  const existing = await getRecentProposal(
+    agentId,
+    strategy.id,
+    INTERVAL_MS[strategy.interval] ?? CYCLE_INTERVAL_MS,
+  );
+  if (existing) return;
+
   const quote = await getQuote({
     tokenIn: strategy.tokenIn,
     tokenOut: strategy.tokenOut,
@@ -139,6 +161,9 @@ async function executeApprovedProposals(agentId: string): Promise<void> {
   const approved = await getApprovedProposals(agentId);
 
   for (const proposal of approved) {
+    // Concurrent execution guard: skip if already being executed by another cycle
+    if (executingProposals.has(proposal.id)) continue;
+
     const retries = proposalRetries.get(proposal.id) ?? 0;
     if (retries >= MAX_PROPOSAL_RETRIES) {
       console.warn(
@@ -147,6 +172,7 @@ async function executeApprovedProposals(agentId: string): Promise<void> {
       continue;
     }
 
+    executingProposals.add(proposal.id);
     try {
       const result = await executeSwap({
         tokenIn: proposal.tokenIn,
@@ -180,6 +206,8 @@ async function executeApprovedProposals(agentId: string): Promise<void> {
         `[agent-runtime] failed executing proposal ${proposal.id} (attempt ${retries + 1}/${MAX_PROPOSAL_RETRIES}):`,
         err,
       );
+    } finally {
+      executingProposals.delete(proposal.id);
     }
   }
 }
@@ -196,7 +224,7 @@ async function shouldExecuteNow(strategy: AgentStrategy): Promise<boolean> {
   return Date.now() - lastExecTime.getTime() >= intervalMs;
 }
 
-// TODO: Move to lib/agent-service.ts — P1 should own DB queries
+// TODO: Request P1 to move to lib/agent-service.ts
 async function getLastExecutionForStrategy(
   strategyId: string,
 ): Promise<Date | null> {
@@ -208,7 +236,7 @@ async function getLastExecutionForStrategy(
   return execution?.executedAt ?? null;
 }
 
-// TODO: Move to lib/agent-service.ts — P1 should own DB queries
+// TODO: Request P1 to move to lib/agent-service.ts
 async function updateProposalStatus(
   proposalId: string,
   status: string,
@@ -218,6 +246,7 @@ async function updateProposalStatus(
 
 export function _resetForTesting(): void {
   proposalRetries.clear();
+  executingProposals.clear();
 }
 
-export { CYCLE_INTERVAL_MS, MAX_PROPOSAL_RETRIES, proposalRetries };
+export { CYCLE_INTERVAL_MS, MAX_PROPOSAL_RETRIES, proposalRetries, executingProposals };

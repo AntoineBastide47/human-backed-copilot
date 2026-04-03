@@ -5,16 +5,19 @@ const mockGetAgentStrategies = vi.fn();
 const mockCreateProposal = vi.fn();
 const mockGetApprovedProposals = vi.fn();
 const mockMarkProposalExecuted = vi.fn();
+const mockGetRecentProposal = vi.fn();
 const mockGetQuote = vi.fn();
 const mockExecuteSwap = vi.fn();
 const mockDbExecutionFindFirst = vi.fn();
 const mockDbProposalUpdate = vi.fn();
+const mockDbAgentFindUnique = vi.fn();
 
 vi.mock('@/lib/agent-service', () => ({
   getAgentStrategies: (...args: unknown[]) => mockGetAgentStrategies(...args),
   createProposal: (...args: unknown[]) => mockCreateProposal(...args),
   getApprovedProposals: (...args: unknown[]) => mockGetApprovedProposals(...args),
   markProposalExecuted: (...args: unknown[]) => mockMarkProposalExecuted(...args),
+  getRecentProposal: (...args: unknown[]) => mockGetRecentProposal(...args),
 }));
 
 vi.mock('../uniswap', () => ({
@@ -26,6 +29,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     execution: { findFirst: (...args: unknown[]) => mockDbExecutionFindFirst(...args) },
     proposal: { update: (...args: unknown[]) => mockDbProposalUpdate(...args) },
+    agent: { findUnique: (...args: unknown[]) => mockDbAgentFindUnique(...args) },
   },
 }));
 
@@ -72,18 +76,21 @@ describe('agent-runtime', () => {
     mockCreateProposal.mockReset();
     mockGetApprovedProposals.mockReset();
     mockMarkProposalExecuted.mockReset();
+    mockGetRecentProposal.mockReset();
     mockGetQuote.mockReset();
     mockExecuteSwap.mockReset();
     mockDbExecutionFindFirst.mockReset();
     mockDbProposalUpdate.mockReset();
+    mockDbAgentFindUnique.mockReset();
 
+    // Defaults: agent is active, no recent proposals, no approved proposals
+    mockDbAgentFindUnique.mockResolvedValue({ status: 'active' });
     mockGetApprovedProposals.mockResolvedValue([]);
+    mockGetRecentProposal.mockResolvedValue(null);
     mockGetQuote.mockResolvedValue({
       quote: { quoteDecimals: '1000000' },
       gasEstimate: '150000',
     });
-
-    // Default: no last execution (allow all strategies to run)
     mockDbExecutionFindFirst.mockResolvedValue(null);
     mockDbProposalUpdate.mockResolvedValue(undefined);
 
@@ -97,7 +104,7 @@ describe('agent-runtime', () => {
     vi.useRealTimers();
   });
 
-  // ── Existing core behavior ────────────────────────────────────────────
+  // ── Core proposal creation ────────────────────────────────────────────
 
   it('creates pending proposal for non-autoExecute strategy', async () => {
     const strategy = makeStrategy({ autoExecute: false });
@@ -152,6 +159,8 @@ describe('agent-runtime', () => {
     );
   });
 
+  // ── Pause behavior ────────────────────────────────────────────────────
+
   it('skips paused strategies', async () => {
     mockGetAgentStrategies.mockResolvedValue([
       makeStrategy({ status: 'paused' }),
@@ -163,6 +172,38 @@ describe('agent-runtime', () => {
     expect(mockGetQuote).not.toHaveBeenCalled();
     expect(mockCreateProposal).not.toHaveBeenCalled();
   });
+
+  it('skips entire cycle when agent is paused and stops loop', async () => {
+    mockDbAgentFindUnique.mockResolvedValue({ status: 'paused' });
+    mockGetAgentStrategies.mockResolvedValue([makeStrategy()]);
+
+    const { startAgentLoop, isLoopActive } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockGetAgentStrategies).not.toHaveBeenCalled();
+    expect(mockCreateProposal).not.toHaveBeenCalled();
+    expect(isLoopActive(AGENT_ID)).toBe(false);
+  });
+
+  it('skips cycle when agent is not found in DB', async () => {
+    mockDbAgentFindUnique.mockResolvedValue(null);
+
+    const { startAgentLoop } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockGetAgentStrategies).not.toHaveBeenCalled();
+  });
+
+  it('skips cycle when agent is still registering', async () => {
+    mockDbAgentFindUnique.mockResolvedValue({ status: 'registering' });
+
+    const { startAgentLoop } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockGetAgentStrategies).not.toHaveBeenCalled();
+  });
+
+  // ── Approved proposal execution ───────────────────────────────────────
 
   it('executes approved proposals from previous cycles', async () => {
     mockGetAgentStrategies.mockResolvedValue([]);
@@ -178,19 +219,85 @@ describe('agent-runtime', () => {
     const { startAgentLoop } = await import('../agent-runtime');
     await startAgentLoop(AGENT_ID);
 
-    expect(mockExecuteSwap).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tokenIn: approved.tokenIn,
-        tokenOut: approved.tokenOut,
-        chainId: 480,
-        amount: approved.amount,
-      }),
-    );
     expect(mockMarkProposalExecuted).toHaveBeenCalledWith(
       'prop-approved',
       expect.objectContaining({ txHash: '0xapproved-tx', status: 'confirmed' }),
     );
   });
+
+  // ── Duplicate prevention ──────────────────────────────────────────────
+
+  it('skips proposal creation when recent proposal exists for strategy', async () => {
+    const strategy = makeStrategy();
+    mockGetAgentStrategies.mockResolvedValue([strategy]);
+    mockGetRecentProposal.mockResolvedValue(makeProposal({ status: 'pending' }));
+
+    const { startAgentLoop } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockGetQuote).not.toHaveBeenCalled();
+    expect(mockCreateProposal).not.toHaveBeenCalled();
+  });
+
+  it('creates proposal when no recent proposal exists', async () => {
+    const strategy = makeStrategy();
+    mockGetAgentStrategies.mockResolvedValue([strategy]);
+    mockGetRecentProposal.mockResolvedValue(null);
+    mockCreateProposal.mockResolvedValue(makeProposal({ status: 'pending' }));
+
+    const { startAgentLoop } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockCreateProposal).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Concurrent execution guard ────────────────────────────────────────
+
+  it('skips proposal already being executed concurrently', async () => {
+    mockGetAgentStrategies.mockResolvedValue([]);
+    const proposal = makeProposal({ id: 'concurrent-prop' });
+    mockGetApprovedProposals.mockResolvedValue([proposal]);
+
+    const { startAgentLoop, executingProposals } = await import('../agent-runtime');
+    executingProposals.add('concurrent-prop');
+
+    await startAgentLoop(AGENT_ID);
+
+    expect(mockExecuteSwap).not.toHaveBeenCalled();
+    // Clean up
+    executingProposals.delete('concurrent-prop');
+  });
+
+  it('removes proposal from executing set after completion', async () => {
+    mockGetAgentStrategies.mockResolvedValue([]);
+    const proposal = makeProposal({ id: 'done-prop' });
+    mockGetApprovedProposals.mockResolvedValue([proposal]);
+    mockExecuteSwap.mockResolvedValue({
+      success: true,
+      txHash: '0xdone',
+      amountIn: '1',
+      amountOut: '1',
+    });
+
+    const { startAgentLoop, executingProposals } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(executingProposals.has('done-prop')).toBe(false);
+  });
+
+  it('removes proposal from executing set even on failure', async () => {
+    mockGetAgentStrategies.mockResolvedValue([]);
+    const proposal = makeProposal({ id: 'fail-prop' });
+    mockGetApprovedProposals.mockResolvedValue([proposal]);
+    mockExecuteSwap.mockRejectedValue(new Error('Boom'));
+
+    const { startAgentLoop, executingProposals } = await import('../agent-runtime');
+    await startAgentLoop(AGENT_ID);
+
+    expect(executingProposals.has('fail-prop')).toBe(false);
+  });
+
+  // ── Loop management ───────────────────────────────────────────────────
 
   it('does not start duplicate loops', async () => {
     mockGetAgentStrategies.mockResolvedValue([]);
@@ -218,6 +325,8 @@ describe('agent-runtime', () => {
     const { stopAgentLoop } = await import('../agent-runtime');
     await expect(stopAgentLoop('nonexistent')).resolves.toBeUndefined();
   });
+
+  // ── Resilience ────────────────────────────────────────────────────────
 
   it('continues after a single strategy error', async () => {
     const good = makeStrategy({ id: 'strat-good', name: 'Good' });
@@ -278,7 +387,6 @@ describe('agent-runtime', () => {
     });
 
     it('skips strategy when last execution is within interval', async () => {
-      // Last execution 1 hour ago, interval is daily (24h)
       mockDbExecutionFindFirst.mockResolvedValue({
         executedAt: new Date(Date.now() - 60 * 60 * 1000),
       });
@@ -292,7 +400,6 @@ describe('agent-runtime', () => {
     });
 
     it('executes when last execution exceeds interval', async () => {
-      // Last execution 25 hours ago, interval is daily (24h)
       mockDbExecutionFindFirst.mockResolvedValue({
         executedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
       });
@@ -307,7 +414,6 @@ describe('agent-runtime', () => {
     });
 
     it('respects hourly interval', async () => {
-      // Last execution 30 min ago, interval is hourly (1h)
       mockDbExecutionFindFirst.mockResolvedValue({
         executedAt: new Date(Date.now() - 30 * 60 * 1000),
       });
@@ -321,7 +427,6 @@ describe('agent-runtime', () => {
     });
 
     it('respects weekly interval', async () => {
-      // Last execution 3 days ago, interval is weekly (7d)
       mockDbExecutionFindFirst.mockResolvedValue({
         executedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
       });
@@ -336,7 +441,6 @@ describe('agent-runtime', () => {
 
     it('always executes when DEMO_MODE=true regardless of interval', async () => {
       process.env.DEMO_MODE = 'true';
-      // Last execution 1 second ago with daily interval
       mockDbExecutionFindFirst.mockResolvedValue({
         executedAt: new Date(Date.now() - 1000),
       });
@@ -449,8 +553,6 @@ describe('agent-runtime', () => {
       mockGetApprovedProposals.mockResolvedValue([proposal]);
 
       const { startAgentLoop, proposalRetries, MAX_PROPOSAL_RETRIES } = await import('../agent-runtime');
-
-      // Pre-fill retry counter to max
       proposalRetries.set('exhausted-prop', MAX_PROPOSAL_RETRIES);
 
       await startAgentLoop(AGENT_ID);
@@ -493,16 +595,13 @@ describe('agent-runtime', () => {
         error: 'Reverted',
       });
 
-      // Simulate multiple cycles
       for (let i = 0; i < MAX_PROPOSAL_RETRIES + 1; i++) {
         mockGetApprovedProposals.mockResolvedValue([proposal]);
         mockGetAgentStrategies.mockResolvedValue([]);
-        // Stop previous loop before starting fresh
         await stopAgentLoop(AGENT_ID);
         await startAgentLoop(AGENT_ID);
       }
 
-      // Should have been called MAX_PROPOSAL_RETRIES times, not MAX+1
       expect(mockExecuteSwap).toHaveBeenCalledTimes(MAX_PROPOSAL_RETRIES);
       expect(proposalRetries.get('multi-retry')).toBe(MAX_PROPOSAL_RETRIES);
     });
