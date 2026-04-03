@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   db: {
     agentStrategy: { findMany: vi.fn() },
-    proposal: { create: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    proposal: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     execution: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -16,6 +16,7 @@ import {
   getApprovedProposals,
   markProposalExecuted,
   saveExecution,
+  getRecentProposal,
   toStrategyResponse,
   toProposalResponse,
   toExecutionResponse,
@@ -27,6 +28,7 @@ import { db } from '@/lib/db';
 const mockStrategy = vi.mocked(db.agentStrategy.findMany);
 const mockProposalCreate = vi.mocked(db.proposal.create);
 const mockProposalFindMany = vi.mocked(db.proposal.findMany);
+const mockProposalFindFirst = vi.mocked(db.proposal.findFirst);
 const mockExecutionCreate = vi.mocked(db.execution.create);
 const mockTransaction = vi.mocked(db.$transaction);
 
@@ -180,5 +182,39 @@ describe('saveExecution', () => {
     const result = await saveExecution(data);
     expect(result.id).toBe('e1');
     expect(result.executedAt).toBe(isoNow);
+  });
+});
+
+describe('getRecentProposal', () => {
+  it('queries pending and approved proposals within the window', async () => {
+    mockProposalFindFirst.mockResolvedValue(dbProposal as never);
+    const result = await getRecentProposal('a1', 's1', 3_600_000);
+    expect(mockProposalFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          agentId: 'a1',
+          strategyId: 's1',
+          status: { in: ['pending', 'approved'] },
+          createdAt: expect.objectContaining({ gte: expect.any(Date) }),
+        }),
+      })
+    );
+    expect(result?.id).toBe('p1');
+  });
+
+  it('returns null when no recent proposal found', async () => {
+    mockProposalFindFirst.mockResolvedValue(null as never);
+    expect(await getRecentProposal('a1', 's1', 3_600_000)).toBeNull();
+  });
+
+  it('uses a cutoff date approximately equal to now minus windowMs', async () => {
+    mockProposalFindFirst.mockResolvedValue(null as never);
+    const before = Date.now();
+    await getRecentProposal('a1', 's1', 60_000);
+    const after = Date.now();
+    const call = mockProposalFindFirst.mock.calls[0][0] as { where: { createdAt: { gte: Date } } };
+    const gte = call.where.createdAt.gte.getTime();
+    expect(gte).toBeGreaterThanOrEqual(before - 60_000);
+    expect(gte).toBeLessThanOrEqual(after - 60_000 + 50); // 50ms tolerance
   });
 });
