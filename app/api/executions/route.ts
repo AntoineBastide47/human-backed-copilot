@@ -1,39 +1,43 @@
 import { NextResponse } from 'next/server';
+import { getSessionUserId, AuthError } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { E } from '@/lib/api-response';
+import { toExecutionResponse } from '@/lib/agent-service';
 import type { Execution } from '@/types';
 
-const STUB_EXECUTIONS: Execution[] = [
-  {
-    id: 'stub-exec-1',
-    agentId: 'stub-agent-1',
-    strategyId: 'stub-strat-1',
-    proposalId: 'stub-prop-0',
-    txHash: '0x' + 'b'.repeat(64),
-    amountIn: '500000000000000000',
-    amountOut: '912000000',
-    status: 'confirmed',
-    executedAt: new Date(Date.now() - 86_400_000).toISOString(),
-  },
-  {
-    id: 'stub-exec-2',
-    agentId: 'stub-agent-1',
-    strategyId: 'stub-strat-1',
-    proposalId: 'stub-prop-neg1',
-    txHash: '0x' + 'c'.repeat(64),
-    amountIn: '500000000000000000',
-    amountOut: '934000000',
-    status: 'confirmed',
-    executedAt: new Date(Date.now() - 172_800_000).toISOString(),
-  },
-];
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
-// STUB: returns mock data. Replace with real DB logic in H7.5-12.
-export async function GET(req: Request): Promise<NextResponse<Execution[]>> {
+export async function GET(req: Request): Promise<NextResponse<Execution[] | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get('agentId');
+  if (!agentId) return E.badRequest('agentId query parameter is required');
 
-  const filtered = agentId
-    ? STUB_EXECUTIONS.filter((e) => e.agentId === agentId)
-    : STUB_EXECUTIONS;
+  // Verify ownership
+  const agent = await db.agent.findUnique({ where: { id: agentId } });
+  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
 
-  return NextResponse.json(filtered);
+  const cursor = searchParams.get('cursor');
+  const rawLimit = searchParams.get('limit');
+  const limit = Math.min(
+    Math.max(1, rawLimit ? parseInt(rawLimit, 10) || DEFAULT_LIMIT : DEFAULT_LIMIT),
+    MAX_LIMIT
+  );
+
+  const executions = await db.execution.findMany({
+    where: { agentId },
+    orderBy: { executedAt: 'desc' },
+    take: limit,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+  });
+
+  return NextResponse.json(executions.map(toExecutionResponse));
 }
