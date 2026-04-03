@@ -15,23 +15,25 @@ export async function POST(
     return E.internal();
   }
 
-  const { id: agentId } = await params;
-  const agent = await db.agent.findUnique({ where: { id: agentId } });
-  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
-
-  let body: { proposalId: string };
+  let proposalId: string;
   try {
-    body = await req.json();
+    ({ proposalId } = await req.json());
   } catch {
     return E.badRequest('Invalid JSON');
   }
-
-  const { proposalId } = body;
   if (!proposalId) return E.badRequest('proposalId is required');
 
-  const proposal = await db.proposal.findUnique({ where: { id: proposalId } });
-  if (!proposal || proposal.agentId !== agentId) return E.notFound('Proposal not found');
-  if (proposal.status !== 'pending') return E.conflict(`Proposal is already ${proposal.status}`);
+  const { id: agentId } = await params;
+
+  const proposal = await db.proposal.findUnique({
+    where: { id: proposalId },
+    include: { agent: true },
+  });
+
+  if (!proposal || proposal.agentId !== agentId || proposal.agent.ownerId !== userId) {
+    return E.notFound('Proposal not found');
+  }
+  if (proposal.status !== 'pending') return E.conflict('Proposal already processed');
 
   await db.proposal.update({ where: { id: proposalId }, data: { status: 'rejected' } });
 

@@ -18,45 +18,71 @@ export async function POST(
     return E.internal();
   }
 
-  const { id: agentId } = await params;
-  const agent = await db.agent.findUnique({ where: { id: agentId } });
-  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
-
-  let body: { proposalId: string };
+  let proposalId: string;
   try {
-    body = await req.json();
+    ({ proposalId } = await req.json());
   } catch {
     return E.badRequest('Invalid JSON');
   }
-
-  const { proposalId } = body;
   if (!proposalId) return E.badRequest('proposalId is required');
 
-  const proposal = await db.proposal.findUnique({ where: { id: proposalId } });
-  if (!proposal || proposal.agentId !== agentId) return E.notFound('Proposal not found');
-  if (proposal.status !== 'pending') return E.conflict(`Proposal is already ${proposal.status}`);
+  const { id: agentId } = await params;
 
-  // Update status to approved first
-  await db.proposal.update({ where: { id: proposalId }, data: { status: 'approved' } });
+  const proposal = await db.proposal.findUnique({
+    where: { id: proposalId },
+    include: { agent: true },
+  });
 
-  // Execute the swap on-chain
+  if (!proposal || proposal.agentId !== agentId || proposal.agent.ownerId !== userId) {
+    return E.notFound('Proposal not found');
+  }
+  if (proposal.status !== 'pending') return E.conflict('Proposal already processed');
+  if (proposal.agent.status !== 'active') return E.conflict('Agent is not active');
+
+  // Spend limit enforcement
+  const limits = proposal.agent.spendLimits as { maxPerTx?: string; dailyCap?: string } | null;
+  if (limits?.maxPerTx) {
+    try {
+      if (BigInt(proposal.amount) > BigInt(limits.maxPerTx)) {
+        return E.badRequest(
+          `Amount ${proposal.amount} exceeds maxPerTx limit ${limits.maxPerTx}`
+        );
+      }
+    } catch {
+      // Non-numeric amount — fail safe
+      return E.badRequest('Invalid proposal amount');
+    }
+  }
+
+  // Optimistic lock: atomically claim the proposal from 'pending' → 'approved'.
+  // If another request already moved it, count will be 0.
+  const { count } = await db.proposal.updateMany({
+    where: { id: proposalId, status: 'pending' },
+    data: { status: 'approved' },
+  });
+  if (count === 0) return E.conflict('Proposal is already being processed');
+
+  // Execute the swap
   const result = await executeSwap({
     tokenIn: proposal.tokenIn,
     tokenOut: proposal.tokenOut,
-    amount: proposal.amount,
     chainId: WORLD_CHAIN_ID,
+    amount: proposal.amount,
   });
 
-  if (!result.success || !result.txHash) {
-    // Revert to pending so the user can retry
-    await db.proposal.update({ where: { id: proposalId }, data: { status: 'pending' } });
-    return E.internal();
+  if (!result.success) {
+    // Rollback proposal so the user can retry
+    await db.proposal.update({
+      where: { id: proposalId },
+      data: { status: 'pending' },
+    });
+    return E.badRequest(result.error ?? 'Swap execution failed');
   }
 
   await markProposalExecuted(proposalId, {
-    agentId,
+    agentId: proposal.agentId,
     strategyId: proposal.strategyId,
-    txHash: result.txHash,
+    txHash: result.txHash ?? '',
     amountIn: result.amountIn,
     amountOut: result.amountOut,
     status: 'confirmed',
