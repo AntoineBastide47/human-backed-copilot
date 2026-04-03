@@ -96,6 +96,21 @@ export interface QuoteResult {
   txFailureReason?: string;
 }
 
+// ── Request bodies ──
+export interface CreateAgentInput {
+  walletAddress: string;
+  spendLimits?: { maxPerTx: string; dailyCap: string };
+}
+export interface CreateStrategyInput {
+  name: string;
+  tokenIn: string;
+  tokenOut: string;
+  chainId?: number;
+  amountPerInterval: string;
+  interval: 'hourly' | 'daily' | 'weekly';
+  autoExecute?: boolean;
+}
+
 // ── Service layer inputs ──
 export interface CreateProposalInput {
   agentId: string;

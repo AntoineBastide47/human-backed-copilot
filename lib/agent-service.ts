@@ -1,5 +1,4 @@
-// P1 owns this file — P0 imports from here
-// TODO: All business logic for agents, proposals, executions
+import { db } from './db';
 import type {
   AgentStrategy,
   Proposal,
@@ -8,25 +7,128 @@ import type {
   SaveExecutionInput,
 } from '@/types';
 
+// ── Prisma row shapes (mirrors schema.prisma) ────────────────────────────────
+
+interface DbStrategy {
+  id: string; agentId: string; name: string; tokenIn: string; tokenOut: string;
+  chainId: number; amountPerInterval: string; interval: string; autoExecute: boolean;
+  status: string; createdAt: Date;
+}
+interface DbProposal {
+  id: string; agentId: string; strategyId: string; type: string;
+  tokenIn: string; tokenOut: string; amount: string; estimatedOutput: string;
+  reasoning: string; status: string; createdAt: Date;
+}
+interface DbExecution {
+  id: string; agentId: string; strategyId: string; proposalId: string | null;
+  txHash: string; amountIn: string; amountOut: string; status: string; executedAt: Date;
+}
+interface DbAgent {
+  id: string; ownerId: string; walletAddress: string; agentbookRegId: string | null;
+  ensName: string | null; status: string; usageCount: number; freeTrialRemaining: number;
+  spendLimits: unknown; createdAt: Date;
+}
+
+// ── Mappers ──────────────────────────────────────────────────────────────────
+
+export function toStrategyResponse(r: DbStrategy): AgentStrategy {
+  return {
+    id: r.id,
+    agentId: r.agentId,
+    name: r.name,
+    tokenIn: r.tokenIn,
+    tokenOut: r.tokenOut,
+    chainId: r.chainId,
+    amountPerInterval: r.amountPerInterval,
+    interval: r.interval as AgentStrategy['interval'],
+    autoExecute: r.autoExecute,
+    status: r.status as AgentStrategy['status'],
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+export function toProposalResponse(r: DbProposal): Proposal {
+  return {
+    id: r.id,
+    agentId: r.agentId,
+    strategyId: r.strategyId,
+    type: r.type as Proposal['type'],
+    tokenIn: r.tokenIn,
+    tokenOut: r.tokenOut,
+    amount: r.amount,
+    estimatedOutput: r.estimatedOutput,
+    reasoning: r.reasoning,
+    status: r.status as Proposal['status'],
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+export function toExecutionResponse(r: DbExecution): Execution {
+  return {
+    id: r.id,
+    agentId: r.agentId,
+    strategyId: r.strategyId,
+    proposalId: r.proposalId ?? '',
+    txHash: r.txHash,
+    amountIn: r.amountIn,
+    amountOut: r.amountOut,
+    status: r.status as Execution['status'],
+    executedAt: r.executedAt.toISOString(),
+  };
+}
+
+export function toAgentResponse(r: DbAgent) {
+  const limits = (r.spendLimits as { maxPerTx?: string; dailyCap?: string } | null) ?? {};
+  return {
+    id: r.id,
+    ownerId: r.ownerId,
+    walletAddress: r.walletAddress,
+    ensName: r.ensName,
+    status: r.status as 'registering' | 'active' | 'paused',
+    usageCount: r.usageCount,
+    freeTrialRemaining: r.freeTrialRemaining,
+    spendLimits: {
+      maxPerTx: limits.maxPerTx ?? '0',
+      dailyCap: limits.dailyCap ?? '0',
+    },
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+// ── Contract C functions — imported by P0 agent-runtime ──────────────────────
+
 export async function getAgentStrategies(agentId: string): Promise<AgentStrategy[]> {
-  throw new Error('Not implemented — P1 task H3.5-7');
+  const rows = await db.agentStrategy.findMany({
+    where: { agentId, status: 'active' },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows.map(toStrategyResponse);
 }
 
 export async function createProposal(data: CreateProposalInput): Promise<Proposal> {
-  throw new Error('Not implemented — P1 task H3.5-7');
+  const row = await db.proposal.create({ data });
+  return toProposalResponse(row);
 }
 
 export async function getApprovedProposals(agentId: string): Promise<Proposal[]> {
-  throw new Error('Not implemented — P1 task H7.5-12');
+  const rows = await db.proposal.findMany({
+    where: { agentId, status: 'approved' },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows.map(toProposalResponse);
 }
 
 export async function markProposalExecuted(
   proposalId: string,
   data: SaveExecutionInput
 ): Promise<void> {
-  throw new Error('Not implemented — P1 task H7.5-12');
+  await db.$transaction([
+    db.proposal.update({ where: { id: proposalId }, data: { status: 'executed' } }),
+    db.execution.create({ data: { ...data, proposalId } }),
+  ]);
 }
 
 export async function saveExecution(data: SaveExecutionInput): Promise<Execution> {
-  throw new Error('Not implemented — P1 task H7.5-12');
+  const row = await db.execution.create({ data });
+  return toExecutionResponse(row);
 }
