@@ -44,3 +44,7 @@ npx prisma db seed                        # demo data
 ```
 
 See the full CLAUDE.md in the chat history for complete architecture, types, contracts, and request flows.
+
+## Commit Guidelines
+
+Use the european norms for commit titles, do not add yourself as a co-author and do not mention P0, P1 or P2
