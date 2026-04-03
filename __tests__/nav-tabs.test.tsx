@@ -3,19 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { NavTabs } from '@/components/nav-tabs'
 
-// next/navigation must be mocked — not available in test env
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/'),
 }))
 
-// next/link renders a plain <a> in tests
 vi.mock('next/link', () => ({
   default: ({ href, children, className }: any) => (
     <a href={href} className={className}>{children}</a>
   ),
 }))
 
-// mock mock-data to control pending count
 vi.mock('@/lib/mock-data', () => ({
   USE_MOCK: true,
   MOCK_PROPOSALS: [
@@ -23,15 +20,42 @@ vi.mock('@/lib/mock-data', () => ({
     { id: 'p2', status: 'pending' },
     { id: 'p3', status: 'executed' },
   ],
+  apiFetch: vi.fn(),
+}))
+
+// Mutable SWR data — control per test via swrData
+const swrData = {
+  data: [
+    { id: 'p1', status: 'pending' },
+    { id: 'p2', status: 'pending' },
+    { id: 'p3', status: 'executed' },
+  ] as any[],
+}
+vi.mock('swr', () => ({
+  default: (_key: any, _fetcher: any, opts: any) => ({
+    data: swrData.data ?? opts?.fallbackData,
+    error: undefined,
+    mutate: vi.fn(),
+  }),
 }))
 
 import { usePathname } from 'next/navigation'
 
-describe('NavTabs', () => {
-  beforeEach(() => {
-    vi.mocked(usePathname).mockReturnValue('/')
+beforeEach(() => {
+  vi.mocked(usePathname).mockReturnValue('/')
+  // Reset to 2 pending
+  swrData.data = [
+    { id: 'p1', status: 'pending' },
+    { id: 'p2', status: 'pending' },
+    { id: 'p3', status: 'executed' },
+  ]
+  vi.stubGlobal('localStorage', {
+    getItem: (_k: string) => null,
+    setItem: vi.fn(),
   })
+})
 
+describe('NavTabs', () => {
   it('renders 4 tabs', () => {
     render(<NavTabs />)
     expect(screen.getByText('Home')).toBeTruthy()
@@ -40,10 +64,23 @@ describe('NavTabs', () => {
     expect(screen.getByText('History')).toBeTruthy()
   })
 
-  it('shows pending badge on Proposals when there are pending proposals', () => {
+  it('shows pending badge with correct count', () => {
     render(<NavTabs />)
-    // 2 pending in mock (p1, p2)
-    expect(screen.getByText('2')).toBeTruthy()
+    const badge = screen.getByTestId('pending-badge')
+    expect(badge.textContent).toBe('2')
+  })
+
+  it('hides pending badge when count is 0', () => {
+    swrData.data = [{ id: 'p1', status: 'executed' }]
+    render(<NavTabs />)
+    expect(screen.queryByTestId('pending-badge')).toBeNull()
+  })
+
+  it('caps badge at "9+" for counts over 9', () => {
+    swrData.data = Array.from({ length: 11 }, (_, i) => ({ id: `p${i}`, status: 'pending' }))
+    render(<NavTabs />)
+    const badge = screen.getByTestId('pending-badge')
+    expect(badge.textContent).toBe('9+')
   })
 
   it('marks Home as active when path is /', () => {
