@@ -1,12 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { USE_MOCK, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
-import { TOKEN_MAP, WORLD_CHAIN_ID } from '@/lib/constants'
+import { USE_MOCK, MOCK_AGENT, apiFetch, tokenDecimals, tokenSymbol } from '@/lib/mock-data'
+import { WORLD_CHAIN_ID } from '@/lib/constants'
 
 const TOKEN_PAIRS = [
   { label: 'WETH → USDC', tokenIn: '0x4200000000000000000000000000000000000006', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
   { label: 'USDC → WETH', tokenIn: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', tokenOut: '0x4200000000000000000000000000000000000006' },
+  { label: 'WLD → USDC',  tokenIn: '0x163f8C2467924be0ae7B5347228CABF260318753', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
+  { label: 'WBTC → USDC', tokenIn: '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
 ] as const
 
 type Interval = 'hourly' | 'daily' | 'weekly'
@@ -26,7 +28,7 @@ export default function StrategiesPage() {
   }, [])
 
   const pair = TOKEN_PAIRS[pairIdx]
-  const tokenInSymbol = TOKEN_MAP[pair.tokenIn]?.symbol ?? pair.tokenIn.slice(0, 6)
+  const tokenInSymbol = tokenSymbol(pair.tokenIn)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,7 +50,7 @@ export default function StrategiesPage() {
         return
       }
 
-      const decimals = pair.tokenIn === '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' ? 6 : 18
+      const decimals = tokenDecimals(pair.tokenIn)
       const amountRaw = BigInt(Math.round(parseFloat(amount) * 10 ** decimals)).toString()
 
       await apiFetch(`/api/agents/${id}/strategies`, {
@@ -80,7 +82,7 @@ export default function StrategiesPage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-2">Token Pair</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {TOKEN_PAIRS.map((p, i) => (
               <button
                 key={i}

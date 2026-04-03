@@ -39,13 +39,21 @@ export default function DashboardPage() {
   const { data: agent } = useSWR<Agent>(
     agentId ? `/api/agents/${agentId}` : null,
     fetcher,
-    { fallbackData: USE_MOCK ? MOCK_AGENT : undefined }
+    {
+      fallbackData: USE_MOCK ? MOCK_AGENT : undefined,
+      // Poll fast while registering, slow once active
+      refreshInterval: (data) =>
+        !data || data.status === 'registering' ? 3000 : 30000,
+    }
   )
 
   const { data: strategies } = useSWR<AgentStrategy[]>(
     agentId ? `/api/agents/${agentId}/strategies` : null,
     fetcher,
-    { fallbackData: USE_MOCK ? MOCK_STRATEGIES : undefined }
+    {
+      fallbackData: USE_MOCK ? MOCK_STRATEGIES : undefined,
+      refreshInterval: 30000,
+    }
   )
 
   if (!agentId && !USE_MOCK) {
