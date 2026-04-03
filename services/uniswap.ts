@@ -28,7 +28,7 @@ function validateSwapRequest(req: SwapRequest): void {
   if (req.tokenIn.toLowerCase() === req.tokenOut.toLowerCase()) {
     throw new Error('tokenIn and tokenOut must differ');
   }
-  if (!req.amount || BigInt(req.amount) <= 0n) throw new Error(`Invalid amount: ${req.amount}`);
+  if (!req.amount || BigInt(req.amount) <= BigInt(0)) throw new Error(`Invalid amount: ${req.amount}`);
   if (req.chainId !== 480) throw new Error(`Unsupported chainId: ${req.chainId}. Only World Chain (480) is supported`);
 }
 
