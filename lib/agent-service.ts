@@ -132,3 +132,25 @@ export async function saveExecution(data: SaveExecutionInput): Promise<Execution
   const row = await db.execution.create({ data });
   return toExecutionResponse(row);
 }
+
+/**
+ * Returns the most recent non-rejected/executed proposal for this strategy
+ * within the given time window. Used by P0 to deduplicate proposal creation.
+ */
+export async function getRecentProposal(
+  agentId: string,
+  strategyId: string,
+  windowMs: number
+): Promise<Proposal | null> {
+  const since = new Date(Date.now() - windowMs);
+  const row = await db.proposal.findFirst({
+    where: {
+      agentId,
+      strategyId,
+      status: { in: ['pending', 'approved'] },
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return row ? toProposalResponse(row) : null;
+}

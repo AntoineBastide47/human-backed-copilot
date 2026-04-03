@@ -73,6 +73,12 @@ export interface Execution {
   executedAt: string;
 }
 
+// ── Pagination ──
+export interface PaginatedResponse<T> {
+  data: T[];
+  nextCursor: string | null;
+}
+
 // ── Swap ──
 export interface SwapRequest {
   tokenIn: string;
