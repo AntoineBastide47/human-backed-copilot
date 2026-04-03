@@ -8,7 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+<<<<<<< Updated upstream
     "test:watch": "vitest"
+=======
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+>>>>>>> Stashed changes
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.2.2",
@@ -32,11 +37,16 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "prisma": "^7.6.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+<<<<<<< Updated upstream
     "vitest": "^4.1.2"
+=======
+    "vitest": "^2"
+>>>>>>> Stashed changes
   }
 }
