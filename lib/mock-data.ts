@@ -1,5 +1,6 @@
 // P2 owns this file
 // Toggle to false when P1's real routes are live
+// Search for USE_MOCK before Sync #5 to ensure all mocks are OFF
 export const USE_MOCK = true;
 
 export const MOCK_AGENT = {
@@ -39,8 +40,41 @@ export const MOCK_PROPOSALS = [
 export const MOCK_EXECUTIONS = [
   {
     id: 'mock-exec-1', agentId: 'mock-agent-1', strategyId: 'mock-strat-1',
-    proposalId: 'mock-prop-0', txHash: '0xabc123def456789...',
+    proposalId: 'mock-prop-0', txHash: '0xabc123def456789abcdef',
     amountIn: '500000000000000000', amountOut: '912000000',
     status: 'confirmed' as const, executedAt: new Date(Date.now() - 86400000).toISOString(),
   },
 ];
+
+// Verify mock response — matches VerifyResponse from types/index.ts
+export const MOCK_VERIFY = {
+  userId: 'mock-user-1',
+  verified: true,
+  walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
+};
+
+/**
+ * Typed fetch wrapper. Throws with a clean message on non-ok responses,
+ * never leaking raw server errors to the UI.
+ *
+ * Usage: const data = await apiFetch<Agent>('/api/agents/123')
+ */
+export async function apiFetch<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).error ?? `Request failed: ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
+}
