@@ -1,7 +1,10 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { USE_MOCK, MOCK_PROPOSALS } from '@/lib/mock-data'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
+import { USE_MOCK, MOCK_PROPOSALS, apiFetch } from '@/lib/mock-data'
+import type { Proposal } from '@/types'
 
 // Simple inline SVG tab icons — no external deps
 function HomeIcon({ active }: { active: boolean }) {
@@ -39,17 +42,32 @@ function HistoryIcon({ active }: { active: boolean }) {
 }
 
 const TABS = [
-  { label: 'Home',      href: '/',                  Icon: HomeIcon },
-  { label: 'Dashboard', href: '/dashboard',          Icon: DashboardIcon },
-  { label: 'Proposals', href: '/agent/proposals',    Icon: ProposalIcon },
-  { label: 'History',   href: '/agent/history',      Icon: HistoryIcon },
+  { label: 'Home',      href: '/',               Icon: HomeIcon },
+  { label: 'Dashboard', href: '/dashboard',       Icon: DashboardIcon },
+  { label: 'Proposals', href: '/agent/proposals', Icon: ProposalIcon },
+  { label: 'History',   href: '/agent/history',   Icon: HistoryIcon },
 ] as const
+
+const fetcher = (url: string) => apiFetch<Proposal[]>(url)
 
 export function NavTabs() {
   const pathname = usePathname()
-  const pendingCount = USE_MOCK
-    ? MOCK_PROPOSALS.filter(p => p.status === 'pending').length
-    : 0
+  const [agentId, setAgentId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setAgentId(localStorage.getItem('hbc_agentId'))
+  }, [])
+
+  const { data: proposals } = useSWR<Proposal[]>(
+    !USE_MOCK && agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
+    fetcher,
+    {
+      fallbackData: USE_MOCK ? (MOCK_PROPOSALS as unknown as Proposal[]) : undefined,
+      refreshInterval: 10000,
+    }
+  )
+
+  const pendingCount = proposals?.filter(p => p.status === 'pending').length ?? 0
 
   return (
     <nav
@@ -71,7 +89,10 @@ export function NavTabs() {
             <span className="relative">
               <Icon active={isActive} />
               {label === 'Proposals' && pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+                <span
+                  data-testid="pending-badge"
+                  className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none"
+                >
                   {pendingCount > 9 ? '9+' : pendingCount}
                 </span>
               )}
