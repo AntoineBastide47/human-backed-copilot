@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(uuid())
+  nullifierHash     String    @unique
+  walletAddress     String
+  verificationLevel String
+  isVerified        Boolean   @default(false)
+  agents            Agent[]
+  createdAt         DateTime  @default(now())
+}
+
+model Agent {
+  id                String          @id @default(uuid())
+  ownerId           String
+  owner             User            @relation(fields: [ownerId], references: [id])
+  walletAddress     String
+  agentbookRegId    String?
+  ensName           String?
+  status            String          @default("registering")
+  usageCount        Int             @default(0)
+  spendLimits       Json            @default("{}")
+  strategies        AgentStrategy[]
+  proposals         Proposal[]
+  executions        Execution[]
+  createdAt         DateTime        @default(now())
+}
+
+model AgentStrategy {
+  id                String      @id @default(uuid())
+  agentId           String
+  agent             Agent       @relation(fields: [agentId], references: [id])
+  name              String
+  tokenIn           String
+  tokenOut          String
+  chainId           Int         @default(480)
+  amountPerInterval String
+  interval          String
+  autoExecute       Boolean     @default(false)
+  status            String      @default("active")
+  proposals         Proposal[]
+  executions        Execution[]
+  createdAt         DateTime    @default(now())
+}
+
+model Proposal {
+  id              String         @id @default(uuid())
+  agentId         String
+  agent           Agent          @relation(fields: [agentId], references: [id])
+  strategyId      String
+  strategy        AgentStrategy  @relation(fields: [strategyId], references: [id])
+  type            String
+  tokenIn         String
+  tokenOut        String
+  amount          String
+  estimatedOutput String         @default("0")
+  reasoning       String
+  status          String         @default("pending")
+  execution       Execution?
+  createdAt       DateTime       @default(now())
+}
+
+model Execution {
+  id          String         @id @default(uuid())
+  agentId     String
+  agent       Agent          @relation(fields: [agentId], references: [id])
+  strategyId  String
+  strategy    AgentStrategy  @relation(fields: [strategyId], references: [id])
+  proposalId  String?        @unique
+  proposal    Proposal?      @relation(fields: [proposalId], references: [id])
+  txHash      String
+  amountIn    String
+  amountOut   String
+  status      String         @default("pending")
+  executedAt  DateTime       @default(now())
+}

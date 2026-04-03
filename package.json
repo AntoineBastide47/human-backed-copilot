@@ -9,17 +9,30 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ensdomains/ensjs": "^4.2.2",
+    "@prisma/client": "^7.6.0",
+    "@worldcoin/agentkit": "^0.1.6",
+    "@worldcoin/minikit-js": "^2.0.2",
+    "bullmq": "^5.73.0",
+    "date-fns": "^4.1.0",
+    "ethers": "^6.16.0",
+    "jsonwebtoken": "^9.0.3",
     "next": "16.2.2",
+    "next-auth": "^4.24.13",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "swr": "^2.4.1",
+    "viem": "^2.47.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "prisma": "^7.6.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
