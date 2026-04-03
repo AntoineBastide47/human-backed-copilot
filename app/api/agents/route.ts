@@ -1,23 +1,70 @@
 import { NextResponse } from 'next/server';
-import type { Agent } from '@/types';
+import { getSessionUserId, AuthError } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { E, isValidAddress } from '@/lib/api-response';
+import { toAgentResponse } from '@/lib/agent-service';
+import { registerAgent } from '@/services/agentkit';
+import type { CreateAgentInput, Agent } from '@/types';
 
-// STUB: returns mock data. Replace with real DB logic in H3.5-7.
-const STUB_AGENT: Agent = {
-  id: 'stub-agent-1',
-  ownerId: 'stub-user-1',
-  walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
-  ensName: 'demo-dca.copilot.eth',
-  status: 'active',
-  usageCount: 0,
-  freeTrialRemaining: 3,
-  spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' },
-  createdAt: new Date().toISOString(),
-};
+export async function GET(req: Request): Promise<NextResponse<Agent[] | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
 
-export async function GET(): Promise<NextResponse<Agent[]>> {
-  return NextResponse.json([STUB_AGENT]);
+  const agents = await db.agent.findMany({
+    where: { ownerId: userId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return NextResponse.json(agents.map(toAgentResponse));
 }
 
-export async function POST(): Promise<NextResponse<Agent>> {
-  return NextResponse.json({ ...STUB_AGENT, status: 'registering' }, { status: 201 });
+export async function POST(req: Request): Promise<NextResponse<Agent | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) return E.unauthorized();
+  if (!user.isVerified) return E.forbidden('World ID verification required');
+
+  let body: CreateAgentInput;
+  try {
+    body = await req.json();
+  } catch {
+    return E.badRequest('Invalid JSON');
+  }
+
+  const { walletAddress, spendLimits } = body;
+  if (!walletAddress || !isValidAddress(walletAddress)) {
+    return E.badRequest('Invalid walletAddress');
+  }
+
+  const agent = await db.agent.create({
+    data: {
+      ownerId: userId,
+      walletAddress,
+      status: 'registering',
+      spendLimits: spendLimits ?? { maxPerTx: '1000000', dailyCap: '5000000' },
+    },
+  });
+
+  // Fire-and-forget: update status once AgentBook confirms registration
+  registerAgent(walletAddress)
+    .then(({ registered }) => {
+      if (registered) {
+        return db.agent.update({ where: { id: agent.id }, data: { status: 'active' } });
+      }
+    })
+    .catch((err) => console.error('[agents] registerAgent failed:', err));
+
+  return NextResponse.json(toAgentResponse(agent), { status: 201 });
 }

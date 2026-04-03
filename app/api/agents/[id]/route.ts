@@ -1,21 +1,26 @@
 import { NextResponse } from 'next/server';
+import { getSessionUserId, AuthError } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { E } from '@/lib/api-response';
+import { toAgentResponse } from '@/lib/agent-service';
 import type { Agent } from '@/types';
 
-// STUB: returns mock data. Replace with real DB logic in H3.5-7.
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<Agent | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
   const { id } = await params;
-  return NextResponse.json({
-    id,
-    ownerId: 'stub-user-1',
-    walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
-    ensName: 'demo-dca.copilot.eth',
-    status: 'active',
-    usageCount: 1,
-    freeTrialRemaining: 2,
-    spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' },
-    createdAt: new Date().toISOString(),
-  });
+  const agent = await db.agent.findUnique({ where: { id } });
+
+  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
+
+  return NextResponse.json(toAgentResponse(agent));
 }
