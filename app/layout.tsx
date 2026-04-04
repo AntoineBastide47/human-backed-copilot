@@ -1,10 +1,15 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist } from 'next/font/google'
+import { Manrope } from 'next/font/google'
 import './globals.css'
 import { MiniKitProvider } from '@/components/minikit-provider'
 import { NavTabs } from '@/components/nav-tabs'
+import { TopAppBar } from '@/components/top-app-bar'
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
+const manrope = Manrope({
+  variable: '--font-manrope',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+})
 
 export const metadata: Metadata = {
   title: 'Human-Backed Copilot',
@@ -20,10 +25,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-stone-50 text-stone-900 font-sans">
+    <html lang="en" className={manrope.variable}>
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        />
+      </head>
+      <body className="min-h-screen bg-background text-on-surface antialiased">
         <MiniKitProvider>
-          <main className="flex-1 pb-14">{children}</main>
+          <TopAppBar />
+          <div className="pt-16 pb-28">{children}</div>
           <NavTabs />
         </MiniKitProvider>
       </body>
