@@ -215,7 +215,7 @@ export default function DashboardPage() {
               <button
                 onClick={openDeleteConfirm}
                 className="w-9 h-9 flex items-center justify-center rounded-lg text-on-surface-variant active:text-error active:bg-error/10 transition-colors"
-                aria-label="Delete agent"
+                aria-label="Delete Agent"
               >
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
