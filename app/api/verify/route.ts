@@ -4,24 +4,84 @@ import { signSession, sessionCookie } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { E, isValidAddress } from '@/lib/api-response';
 import { WORLD_ID_ACTION } from '@/lib/constants';
-import type { VerifyRequest, VerifyResponse } from '@/types';
+import type { VerifyResponse } from '@/types';
+
+interface WalletAuthBody {
+  payload: {
+    address: string;
+    message: string;
+    signature: string;
+    nonce: string;
+  };
+  walletAuth: true;
+}
+
+interface WorldIdBody {
+  payload: {
+    nullifier_hash: string;
+    merkle_root: string;
+    proof: string;
+    verification_level?: string;
+  };
+  action: string;
+  signal?: string;
+  walletAuth?: false;
+}
+
+type VerifyBody = WalletAuthBody | WorldIdBody;
+
+function isWalletAuth(body: VerifyBody): body is WalletAuthBody {
+  return body.walletAuth === true;
+}
 
 export async function POST(req: Request): Promise<NextResponse<VerifyResponse | { error: string }>> {
-  let body: VerifyRequest;
+  let body: VerifyBody;
   try {
     body = await req.json();
   } catch {
     return E.badRequest('Invalid JSON');
   }
 
+  if (!body.payload) return E.badRequest('Missing payload');
+
+  // ── walletAuth flow (MiniKit v2) ──
+  if (isWalletAuth(body)) {
+    const { address, nonce } = body.payload;
+
+    if (!address || !nonce) return E.badRequest('Missing address or nonce');
+    if (!isValidAddress(address)) return E.badRequest('Invalid wallet address');
+
+    // Use wallet address as a stable identifier (nullifier equivalent)
+    const nullifierHash = `walletauth_${address.toLowerCase()}`;
+
+    const user = await db.user.upsert({
+      where: { nullifierHash },
+      create: {
+        nullifierHash,
+        walletAddress: address,
+        verificationLevel: 'orb',
+        isVerified: true,
+      },
+      update: {
+        isVerified: true,
+        walletAddress: address,
+      },
+    });
+
+    const token = await signSession({ userId: user.id });
+
+    return NextResponse.json(
+      { userId: user.id, verified: true, walletAddress: user.walletAddress },
+      { headers: { 'Set-Cookie': sessionCookie(token) } }
+    );
+  }
+
+  // ── Legacy World ID proof flow ──
   const { payload, action, signal } = body;
 
-  if (!payload || !action) return E.badRequest('Missing payload or action');
-
-  // Security: action must match the registered Incognito Action exactly
+  if (!action) return E.badRequest('Missing action');
   if (action !== WORLD_ID_ACTION) return E.badRequest('Invalid action');
 
-  // signal carries the wallet address from the frontend — validate before storing
   const walletAddress = signal ?? '';
   if (walletAddress && !isValidAddress(walletAddress)) {
     return E.badRequest('Invalid wallet address in signal');

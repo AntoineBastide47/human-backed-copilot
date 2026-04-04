@@ -1,0 +1,36 @@
+<svg width="345" height="210" viewBox="0 0 345 210" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="345" height="210" rx="16" fill="#0A0A0A"/>
+
+  <!-- Grid pattern -->
+  <g opacity="0.06">
+    <line x1="0" y1="30" x2="345" y2="30" stroke="white"/>
+    <line x1="0" y1="60" x2="345" y2="60" stroke="white"/>
+    <line x1="0" y1="90" x2="345" y2="90" stroke="white"/>
+    <line x1="0" y1="120" x2="345" y2="120" stroke="white"/>
+    <line x1="0" y1="150" x2="345" y2="150" stroke="white"/>
+    <line x1="0" y1="180" x2="345" y2="180" stroke="white"/>
+    <line x1="50" y1="0" x2="50" y2="210" stroke="white"/>
+    <line x1="100" y1="0" x2="100" y2="210" stroke="white"/>
+    <line x1="150" y1="0" x2="150" y2="210" stroke="white"/>
+    <line x1="200" y1="0" x2="200" y2="210" stroke="white"/>
+    <line x1="250" y1="0" x2="250" y2="210" stroke="white"/>
+    <line x1="300" y1="0" x2="300" y2="210" stroke="white"/>
+  </g>
+
+  <!-- Shield icon -->
+  <g transform="translate(148, 40)">
+    <path d="M25 4L6 12V28C6 40.5 14.2 52.2 25 55C35.8 52.2 44 40.5 44 28V12L25 4Z" fill="#22C55E" opacity="0.15"/>
+    <path d="M25 4L6 12V28C6 40.5 14.2 52.2 25 55C35.8 52.2 44 40.5 44 28V12L25 4Z" stroke="#22C55E" stroke-width="2.5" fill="none"/>
+    <path d="M18 28L23 33L33 23" stroke="#22C55E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Title -->
+  <text x="172.5" y="122" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700">Human-Backed</text>
+  <text x="172.5" y="146" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700">Trading Copilot</text>
+
+  <!-- Subtitle -->
+  <text x="172.5" y="172" text-anchor="middle" fill="#A8A29E" font-family="system-ui, -apple-system, sans-serif" font-size="11">Verified humans only. Bots blocked.</text>
+
+  <!-- Accent line -->
+  <rect x="132" y="186" width="81" height="2" rx="1" fill="#22C55E" opacity="0.6"/>
+</svg>

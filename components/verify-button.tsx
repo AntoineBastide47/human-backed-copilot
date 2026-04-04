@@ -1,53 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { MiniKit } from '@worldcoin/minikit-js'
-import { WORLD_ID_ACTION } from '@/lib/constants'
 import { fetchJson } from '@/components/sync4-client'
 
 interface Props {
   onVerified: (userId: string, walletAddress: string) => void
-}
-
-type VerificationPayload = {
-  status?: string
-  [key: string]: unknown
-}
-
-type LegacyVerifyCommand = (options: {
-  action: string
-  verification_level: 'orb'
-}) => Promise<unknown>
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function getVerifyCommand(): LegacyVerifyCommand | null {
-  const candidate =
-    (MiniKit as { verify?: LegacyVerifyCommand }).verify ??
-    (MiniKit as {
-      commandsAsync?: { verify?: LegacyVerifyCommand }
-      commands?: { verify?: LegacyVerifyCommand }
-    }).commandsAsync?.verify ??
-    (MiniKit as {
-      commands?: { verify?: LegacyVerifyCommand }
-    }).commands?.verify
-
-  return typeof candidate === 'function' ? candidate : null
-}
-
-function extractPayload(result: unknown): VerificationPayload | null {
-  if (!isRecord(result)) return null
-
-  if (isRecord(result.finalPayload)) {
-    return result.finalPayload as VerificationPayload
-  }
-
-  if (isRecord(result.data)) {
-    return result.data as VerificationPayload
-  }
-
-  return null
 }
 
 const isInWorldApp = () => {
@@ -86,7 +43,7 @@ export function VerifyButton({ onVerified }: Props) {
     }
   }
 
-  const handleMiniKitVerify = async () => {
+  const handleWorldAppVerify = async () => {
     setError(null)
     setLoading(true)
 
@@ -96,29 +53,23 @@ export function VerifyButton({ onVerified }: Props) {
         return
       }
 
-      const verifyCommand = getVerifyCommand()
-      if (!verifyCommand) {
-        setError('World ID verification is unavailable in this World App SDK build.')
-        return
-      }
-
-      const result = await verifyCommand({
-        action: WORLD_ID_ACTION,
-        verification_level: 'orb',
+      // Use walletAuth to authenticate the user via SIWE
+      const nonce = crypto.randomUUID()
+      const result = await MiniKit.walletAuth({
+        nonce,
+        statement: 'Verify your identity for Human-Backed Trading Copilot',
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       })
 
-      const finalPayload = extractPayload(result)
-      if (!finalPayload) {
-        setError('Verification payload missing. Try again inside World App.')
+      const walletAddress = result.data.address
+      const isOrbVerified = MiniKit.user?.verificationStatus?.isOrbVerified ?? false
+
+      if (!isOrbVerified) {
+        setError('Orb verification required. Please verify with World ID first.')
         return
       }
 
-      if (finalPayload.status === 'error') {
-        setError('Verification cancelled.')
-        return
-      }
-
-      const worldAppWalletAddress = MiniKit.user?.walletAddress ?? ''
+      // Send to backend for verification and session creation
       const data = await fetchJson<{
         verified: boolean
         userId: string
@@ -126,17 +77,21 @@ export function VerifyButton({ onVerified }: Props) {
       }>('/api/verify', {
         method: 'POST',
         body: JSON.stringify({
-          payload: finalPayload,
-          action: WORLD_ID_ACTION,
-          signal: worldAppWalletAddress || undefined,
+          payload: {
+            address: walletAddress,
+            message: result.data.message,
+            signature: result.data.signature,
+            nonce,
+          },
+          walletAuth: true,
         }),
       })
 
       if (data.verified) {
         setVerified(true)
-        onVerified(data.userId, data.walletAddress || worldAppWalletAddress)
+        onVerified(data.userId, data.walletAddress)
       } else {
-        setError('Proof rejected. Try again.')
+        setError('Verification failed. Try again.')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -146,9 +101,7 @@ export function VerifyButton({ onVerified }: Props) {
   }
 
   const inWorldApp = isInWorldApp()
-
-  // Determine which handler to use
-  const handleVerify = inWorldApp ? handleMiniKitVerify : isDemoMode ? handleDemoLogin : handleMiniKitVerify
+  const handleVerify = inWorldApp ? handleWorldAppVerify : isDemoMode ? handleDemoLogin : handleWorldAppVerify
 
   const buttonLabel = loading
     ? 'Verifying...'
@@ -176,14 +129,12 @@ export function VerifyButton({ onVerified }: Props) {
         {buttonLabel}
       </button>
 
-      {/* Show demo option as secondary when not in World App and demo is enabled */}
       {!inWorldApp && isDemoMode && !verified && (
         <p className="text-center text-xs text-stone-400">
           Demo mode — no World App required
         </p>
       )}
 
-      {/* If not in World App and not demo mode, show helpful message */}
       {!inWorldApp && !isDemoMode && !verified && (
         <p className="text-center text-xs text-stone-400">
           Open this link in World App to verify, or enable demo mode for testing.
