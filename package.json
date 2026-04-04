@@ -2,6 +2,9 @@
   "name": "human-backed-copilot",
   "version": "0.1.0",
   "private": true,
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +12,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.2.2",
@@ -44,6 +48,7 @@
     "prisma": "^7.6.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "tsx": "^4.19.3",
     "vitest": "^4.1.2"
   }
 }

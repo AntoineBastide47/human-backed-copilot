@@ -168,7 +168,9 @@ export async function getRecentProposal(
     where: {
       agentId,
       strategyId,
-      status: { in: ['pending', 'approved'] },
+      // 'rejected' is included: a human rejection must be respected for the
+      // full interval window before the agent re-proposes the same action.
+      status: { in: ['pending', 'approved', 'rejected'] },
       createdAt: { gte: since },
     },
     orderBy: { createdAt: 'desc' },
