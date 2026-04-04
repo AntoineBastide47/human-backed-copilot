@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { USE_MOCK, MOCK_AGENT, apiFetch, tokenDecimals, tokenSymbol } from '@/lib/mock-data'
 import { WORLD_CHAIN_ID } from '@/lib/constants'
+import { useLocalStorageValue } from '@/lib/client-storage'
 
 const TOKEN_PAIRS = [
   { label: 'WETH → USDC', tokenIn: '0x4200000000000000000000000000000000000006', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
@@ -15,17 +16,13 @@ type Interval = 'hourly' | 'daily' | 'weekly'
 
 export default function StrategiesPage() {
   const router = useRouter()
-  const [agentId, setAgentId] = useState<string | null>(null)
+  const agentId = useLocalStorageValue('hbc_agentId')
   const [pairIdx, setPairIdx] = useState(0)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
   const [autoExecute, setAutoExecute] = useState(false)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
 
   const pair = TOKEN_PAIRS[pairIdx]
   const tokenInSymbol = tokenSymbol(pair.tokenIn)

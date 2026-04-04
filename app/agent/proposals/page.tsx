@@ -1,11 +1,14 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import useSWR from 'swr'
 import { USE_MOCK, MOCK_PROPOSALS, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
 import type { Proposal } from '@/types'
 import { ProposalCard } from '@/components/proposal-card'
+import { useLocalStorageValue } from '@/lib/client-storage'
 
-const fetcher = (url: string) => apiFetch<Proposal[]>(url)
+type ProposalWithTxHash = Proposal & { txHash?: string }
+
+const fetcher = (url: string) => apiFetch<ProposalWithTxHash[]>(url)
 
 function ProposalCardSkeleton() {
   return (
@@ -28,20 +31,16 @@ function ProposalCardSkeleton() {
 }
 
 export default function ProposalsPage() {
-  const [agentId, setAgentId]       = useState<string | null>(null)
+  const agentId = useLocalStorageValue('hbc_agentId')
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [toasts, setToasts]         = useState<{ id: string; msg: string; ok: boolean }[]>([])
 
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
-
-  const { data: proposals, error, mutate, isLoading } = useSWR<(Proposal & { txHash?: string })[]>(
+  const { data: proposals, error, mutate, isLoading } = useSWR<ProposalWithTxHash[]>(
     agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
     fetcher,
     {
-      fallbackData: USE_MOCK ? (MOCK_PROPOSALS as any[]) : undefined,
+      fallbackData: USE_MOCK ? MOCK_PROPOSALS : undefined,
       refreshInterval: 5000,
     }
   )

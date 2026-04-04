@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+type AgentkitTestModule = typeof import('@worldcoin/agentkit') & {
+  __mockLookupHuman: ReturnType<typeof vi.fn>;
+  __mockTryIncrementUsage: ReturnType<typeof vi.fn>;
+};
+
+async function importMockAgentkit(): Promise<AgentkitTestModule> {
+  return (await import('@worldcoin/agentkit')) as AgentkitTestModule;
+}
+
 vi.mock('@worldcoin/agentkit', () => {
   const mockLookupHuman = vi.fn();
   const mockTryIncrementUsage = vi.fn().mockResolvedValue(true);
@@ -47,8 +56,8 @@ describe('agentkit', () => {
 
   describe('registerAgent', () => {
     it('returns registered: true when agent is in AgentBook', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const agentkit = await importMockAgentkit();
+      const mockLookup = agentkit.__mockLookupHuman;
       mockLookup.mockResolvedValueOnce('0xhumanid');
 
       const { registerAgent } = await import('../agentkit');
@@ -57,8 +66,8 @@ describe('agentkit', () => {
     });
 
     it('returns registered: false when agent is not in AgentBook', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const agentkit = await importMockAgentkit();
+      const mockLookup = agentkit.__mockLookupHuman;
       mockLookup.mockResolvedValueOnce(null);
 
       const { registerAgent } = await import('../agentkit');
@@ -79,8 +88,8 @@ describe('agentkit', () => {
 
   describe('verifyAgentIsHuman', () => {
     it('returns true for registered agent', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const agentkit = await importMockAgentkit();
+      const mockLookup = agentkit.__mockLookupHuman;
       mockLookup.mockResolvedValueOnce('0xhumanid');
 
       const { verifyAgentIsHuman } = await import('../agentkit');
@@ -88,8 +97,8 @@ describe('agentkit', () => {
     });
 
     it('returns false for unregistered agent', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const agentkit = await importMockAgentkit();
+      const mockLookup = agentkit.__mockLookupHuman;
       mockLookup.mockResolvedValueOnce(null);
 
       const { verifyAgentIsHuman } = await import('../agentkit');
@@ -97,8 +106,8 @@ describe('agentkit', () => {
     });
 
     it('returns false on network error instead of throwing', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const agentkit = await importMockAgentkit();
+      const mockLookup = agentkit.__mockLookupHuman;
       mockLookup.mockRejectedValueOnce(new Error('RPC timeout'));
 
       const { verifyAgentIsHuman } = await import('../agentkit');
@@ -185,11 +194,11 @@ describe('agentkit', () => {
     });
 
     it('returns 403 when agent not in AgentBook', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
+      const agentkit = await importMockAgentkit();
       const parseHeader = agentkit.parseAgentkitHeader as ReturnType<typeof vi.fn>;
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const mockLookup = agentkit.__mockLookupHuman;
 
       parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
       validateMessage.mockResolvedValueOnce({ valid: true });
@@ -210,11 +219,11 @@ describe('agentkit', () => {
     });
 
     it('returns granted: true for verified human-backed agent', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
+      const agentkit = await importMockAgentkit();
       const parseHeader = agentkit.parseAgentkitHeader as ReturnType<typeof vi.fn>;
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
-      const mockLookup = (agentkit as any).__mockLookupHuman;
+      const mockLookup = agentkit.__mockLookupHuman;
 
       parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
       validateMessage.mockResolvedValueOnce({ valid: true });
@@ -231,12 +240,12 @@ describe('agentkit', () => {
     });
 
     it('returns 402 when free trial exhausted', async () => {
-      const agentkit = await import('@worldcoin/agentkit');
+      const agentkit = await importMockAgentkit();
       const parseHeader = agentkit.parseAgentkitHeader as ReturnType<typeof vi.fn>;
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
-      const mockLookup = (agentkit as any).__mockLookupHuman;
-      const mockTryIncrement = (agentkit as any).__mockTryIncrementUsage;
+      const mockLookup = agentkit.__mockLookupHuman;
+      const mockTryIncrement = agentkit.__mockTryIncrementUsage;
 
       parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
       validateMessage.mockResolvedValueOnce({ valid: true });

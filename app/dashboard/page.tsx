@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { USE_MOCK, MOCK_AGENT, MOCK_STRATEGIES, apiFetch } from '@/lib/mock-data'
 import type { Agent, AgentStrategy } from '@/types'
+import { useLocalStorageValue } from '@/lib/client-storage'
 
-const fetcher = (url: string) => apiFetch<any>(url)
+const fetchAgent = (url: string) => apiFetch<Agent>(url)
+const fetchStrategies = (url: string) => apiFetch<AgentStrategy[]>(url)
 
 function StatusBadge({ status }: { status: Agent['status'] }) {
   const styles = {
@@ -78,11 +79,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 export default function DashboardPage() {
-  const [agentId, setAgentId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
+  const agentId = useLocalStorageValue('hbc_agentId')
 
   const {
     data: agent,
@@ -91,7 +88,7 @@ export default function DashboardPage() {
     isLoading: agentLoading,
   } = useSWR<Agent>(
     agentId ? `/api/agents/${agentId}` : null,
-    fetcher,
+    fetchAgent,
     {
       fallbackData: USE_MOCK ? MOCK_AGENT : undefined,
       refreshInterval: (data) =>
@@ -106,7 +103,7 @@ export default function DashboardPage() {
     isLoading: strategiesLoading,
   } = useSWR<AgentStrategy[]>(
     agentId ? `/api/agents/${agentId}/strategies` : null,
-    fetcher,
+    fetchStrategies,
     {
       fallbackData: USE_MOCK ? MOCK_STRATEGIES : undefined,
       refreshInterval: 30000,

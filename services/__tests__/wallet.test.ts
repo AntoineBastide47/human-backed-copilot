@@ -18,7 +18,7 @@ vi.mock('viem', () => {
 });
 
 vi.mock('viem/accounts', () => ({
-  privateKeyToAccount: vi.fn((key: string) => ({
+  privateKeyToAccount: vi.fn(() => ({
     address: '0x1234567890abcdef1234567890abcdef12345678',
     type: 'local',
   })),

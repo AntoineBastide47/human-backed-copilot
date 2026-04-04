@@ -2,6 +2,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import React from 'react'
+import type { Execution } from '@/types'
+
+type ExecutionWithTokens = Execution & { tokenIn?: string; tokenOut?: string }
+type SwrState = {
+  data: ExecutionWithTokens[] | undefined
+  error: Error | undefined
+  isLoading: boolean
+}
 
 vi.mock('@/lib/constants', () => ({
   txExplorerUrl: (hash: string) => `https://worldscan.org/tx/${hash}`,
@@ -25,9 +33,9 @@ vi.mock('@/lib/mock-data', () => ({
   },
 }))
 
-const swrData = { data: undefined as any, error: undefined as any, isLoading: false }
+const swrData: SwrState = { data: undefined, error: undefined, isLoading: false }
 vi.mock('swr', () => ({
-  default: (_key: any, _fetcher: any, _opts: any) => ({ ...swrData, mutate: vi.fn() }),
+  default: () => ({ ...swrData, mutate: vi.fn() }),
 }))
 
 const WETH = '0x4200000000000000000000000000000000000006'
@@ -47,7 +55,7 @@ beforeEach(() => {
   swrData.error     = undefined
   swrData.isLoading = false
   vi.stubGlobal('localStorage', {
-    getItem: (k: string) => k === 'hbc_agentId' ? 'agent-123' : null,
+    getItem: (key: string) => key === 'hbc_agentId' ? 'agent-123' : null,
     setItem: vi.fn(),
   })
 })
