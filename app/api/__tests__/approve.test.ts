@@ -50,15 +50,17 @@ const mockSwap = vi.mocked(executeSwap);
 
 const TX = '0x' + 'f'.repeat(64);
 const now = new Date();
+const WETH = '0x4200000000000000000000000000000000000006';
+const USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
 
 const activeAgent = {
   id: 'a1', ownerId: 'u1', walletAddress: '0x' + 'a'.repeat(40),
-  status: 'active', spendLimits: { maxPerTx: '2000000000000000000', dailyCap: '10000000000000000000' },
+  status: 'active', spendLimits: { maxPerTx: '2000000000', dailyCap: '10000000000' },
   createdAt: now,
 };
 const pendingProposal = {
   id: 'p1', agentId: 'a1', strategyId: 's1', type: 'dca_buy',
-  tokenIn: '0x' + 'b'.repeat(40), tokenOut: '0x' + 'c'.repeat(40),
+  tokenIn: WETH, tokenOut: USDC,
   amount: '1000000000000000000', estimatedOutput: '900000000',
   reasoning: 'DCA', status: 'pending', createdAt: now,
   agent: activeAgent,
@@ -146,17 +148,35 @@ describe('POST /api/agents/[id]/approve', () => {
     expect(res.status).toBe(409);
   });
 
-  it('returns 400 when amount exceeds maxPerTx spend limit', async () => {
+  it('returns 400 when WETH proposal notional exceeds maxPerTx spend limit', async () => {
     mockFindUnique.mockResolvedValue({
       ...pendingProposal,
-      amount: '9999000000000000000', // 9.999 ETH
-      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000000000000' } }, // max 1 ETH
+      estimatedOutput: '1250000000',
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000' } },
     } as never);
     const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
     expect(res.status).toBe(400);
     const data = await json<{ error: string }>(res);
     expect(data.error).toContain('maxPerTx');
+    expect(data.error).toContain('$1250');
+    expect(data.error).toContain('$1000');
     expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when USDC input amount exceeds maxPerTx spend limit', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      tokenIn: USDC,
+      tokenOut: WETH,
+      amount: '1500000000',
+      estimatedOutput: '800000000000000000',
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000' } },
+    } as never);
+
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(400);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('$1500');
   });
 
   it('returns 409 on race condition (optimistic lock returns count=0)', async () => {
@@ -184,6 +204,16 @@ describe('POST /api/agents/[id]/approve', () => {
       ...pendingProposal,
       agent: { ...activeAgent, spendLimits: {} },
     } as never);
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(200);
+  });
+
+  it('treats legacy default spend limits as $1,000 / $5,000 caps', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' } },
+    } as never);
+
     const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
     expect(res.status).toBe(200);
   });

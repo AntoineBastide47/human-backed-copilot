@@ -6,6 +6,7 @@ import type {
   CreateProposalInput,
   SaveExecutionInput,
 } from '@/types';
+import { normalizeSpendLimits } from './spend-limits';
 
 // ── Prisma row shapes (mirrors schema.prisma) ────────────────────────────────
 
@@ -78,7 +79,9 @@ export function toExecutionResponse(r: DbExecution): Execution {
 }
 
 export function toAgentResponse(r: DbAgent) {
-  const limits = (r.spendLimits as { maxPerTx?: string; dailyCap?: string } | null) ?? {};
+  const limits = normalizeSpendLimits(
+    (r.spendLimits as { maxPerTx?: string; dailyCap?: string } | null) ?? {},
+  );
   return {
     id: r.id,
     ownerId: r.ownerId,
@@ -88,8 +91,8 @@ export function toAgentResponse(r: DbAgent) {
     usageCount: r.usageCount,
     freeTrialRemaining: r.freeTrialRemaining,
     spendLimits: {
-      maxPerTx: limits.maxPerTx ?? '0',
-      dailyCap: limits.dailyCap ?? '0',
+      maxPerTx: limits.maxPerTx,
+      dailyCap: limits.dailyCap,
     },
     createdAt: r.createdAt.toISOString(),
   };

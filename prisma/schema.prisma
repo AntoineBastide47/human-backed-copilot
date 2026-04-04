@@ -36,6 +36,23 @@ model Agent {
   @@index([status])
 }
 
+model AgentKitUsage {
+  id         String   @id @default(uuid())
+  endpoint   String
+  humanId    String
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([endpoint, humanId])
+}
+
+model AgentKitNonce {
+  id        String   @id @default(uuid())
+  nonce     String   @unique
+  createdAt DateTime @default(now())
+}
+
 model AgentStrategy {
   id                String      @id @default(uuid())
   agentId           String

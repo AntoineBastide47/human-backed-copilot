@@ -40,7 +40,7 @@ async function main(): Promise<void> {
       status: 'active',
       usageCount: 8,
       freeTrialRemaining: 3,
-      spendLimits: { maxPerTx: '1000000000000000000', dailyCap: '5000000000000000000' },
+      spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
     },
     update: { status: 'active' },
   });

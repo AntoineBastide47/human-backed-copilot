@@ -2,12 +2,14 @@ import {
   createAgentBookVerifier,
   createAgentkitHooks,
   declareAgentkitExtension,
+  type AgentKitStorage,
   InMemoryAgentKitStorage,
   agentkitResourceServerExtension,
   parseAgentkitHeader,
   validateAgentkitMessage,
   verifyAgentkitSignature,
 } from '@worldcoin/agentkit';
+import { randomUUID } from 'crypto';
 import { decodeAbiParameters } from 'viem';
 import { getPublicClient, getWalletClient } from './wallet';
 import { AGENT_BOOK_ADDRESS } from '@/lib/constants';
@@ -17,9 +19,80 @@ export const WORLD_CHAIN = 'eip155:480';
 export const WORLD_USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
 
 const FREE_TRIAL_USES = 3;
+const AGENTKIT_CHALLENGE_TTL_SECONDS = 5 * 60;
+const AGENTKIT_STATEMENT = 'Verify your agent is backed by a real human';
 
 function getRpcUrl(): string | undefined {
   return process.env.WORLD_CHAIN_RPC;
+}
+
+class PrismaAgentKitStorage implements AgentKitStorage {
+  private async getDb() {
+    const { db } = await import('@/lib/db');
+    return db;
+  }
+
+  async tryIncrementUsage(
+    endpoint: string,
+    humanId: string,
+    limit: number,
+  ): Promise<boolean> {
+    const db = await this.getDb();
+    const rows = await db.$queryRaw<{ usageCount: number }[]>`
+      INSERT INTO "AgentKitUsage" ("id", "endpoint", "humanId", "usageCount", "createdAt", "updatedAt")
+      VALUES (${randomUUID()}, ${endpoint}, ${humanId}, 1, NOW(), NOW())
+      ON CONFLICT ("endpoint", "humanId") DO UPDATE
+      SET
+        "usageCount" = "AgentKitUsage"."usageCount" + 1,
+        "updatedAt" = NOW()
+      WHERE "AgentKitUsage"."usageCount" < ${limit}
+      RETURNING "usageCount"
+    `;
+
+    return rows.length > 0;
+  }
+
+  async hasUsedNonce(nonce: string): Promise<boolean> {
+    const db = await this.getDb();
+    const record = await db.agentKitNonce.findUnique({ where: { nonce } });
+    return record !== null;
+  }
+
+  async recordNonce(nonce: string): Promise<void> {
+    const db = await this.getDb();
+    await db.agentKitNonce.upsert({
+      where: { nonce },
+      update: {},
+      create: { nonce },
+    });
+  }
+}
+
+function createStorage(): AgentKitStorage {
+  if (process.env.NODE_ENV === 'test' || !process.env.DATABASE_URL) {
+    return new InMemoryAgentKitStorage();
+  }
+
+  return new PrismaAgentKitStorage();
+}
+
+const storage = createStorage();
+
+async function buildAgentkitChallenge(request: Request) {
+  const enrichPaymentRequiredResponse =
+    agentkitResourceServerExtension.enrichPaymentRequiredResponse;
+
+  if (!enrichPaymentRequiredResponse) {
+    throw new Error('AgentKit challenge enrichment is unavailable');
+  }
+
+  return enrichPaymentRequiredResponse(
+    agentkitExtensionDeclaration.agentkit as never,
+    {
+      resourceInfo: { url: request.url },
+      requirements: [{ network: WORLD_CHAIN }],
+    } as never,
+  );
 }
 
 // ── AgentBook contract ABI ──────────────────────────────────────────────
@@ -57,7 +130,6 @@ const AGENT_BOOK_ABI = [
 // ── AgentKit SDK (read-only verifier + hooks) ───────────────────────────
 
 const agentBook = createAgentBookVerifier({ rpcUrl: getRpcUrl() });
-const storage = new InMemoryAgentKitStorage();
 
 const hooks = createAgentkitHooks({
   agentBook,
@@ -76,6 +148,8 @@ const hooks = createAgentkitHooks({
 
 export const agentkitExtensionDeclaration = declareAgentkitExtension({
   network: WORLD_CHAIN,
+  statement: AGENTKIT_STATEMENT,
+  expirationSeconds: AGENTKIT_CHALLENGE_TTL_SECONDS,
   mode: { type: 'free-trial', uses: FREE_TRIAL_USES },
 });
 
@@ -178,6 +252,7 @@ export async function verifyAgentkitRequest(
     request.headers.get('agentkit') ?? request.headers.get('Agentkit');
 
   if (!headerValue) {
+    const challenge = await buildAgentkitChallenge(request);
     return {
       granted: false,
       status: 402,
@@ -185,7 +260,7 @@ export async function verifyAgentkitRequest(
         error: 'Payment Required',
         message:
           'This endpoint requires an AgentKit credential. Register your agent at AgentBook.',
-        extensions: { agentkit: agentkitExtensionDeclaration },
+        extensions: { agentkit: challenge },
       },
     };
   }
@@ -194,8 +269,14 @@ export async function verifyAgentkitRequest(
     const payload = parseAgentkitHeader(headerValue);
     const url = new URL(request.url);
     const resourceUri = `${url.origin}${url.pathname}`;
+    const hasUsedNonce = storage.hasUsedNonce?.bind(storage);
+    const checkNonce = hasUsedNonce
+      ? async (nonce: string) => !(await hasUsedNonce(nonce))
+      : undefined;
 
-    const validation = await validateAgentkitMessage(payload, resourceUri);
+    const validation = await validateAgentkitMessage(payload, resourceUri, {
+      checkNonce,
+    });
     if (!validation.valid) {
       return {
         granted: false,
@@ -216,9 +297,21 @@ export async function verifyAgentkitRequest(
       };
     }
 
+    if (!sigResult.address) {
+      return {
+        granted: false,
+        status: 403,
+        body: { error: 'Invalid agentkit signature', reason: 'Missing signer address' },
+      };
+    }
+
+    if (storage.recordNonce) {
+      await storage.recordNonce(payload.nonce);
+    }
+
     const humanId = await agentBook.lookupHuman(
-      sigResult.address!,
-      WORLD_CHAIN,
+      sigResult.address,
+      payload.chainId,
     );
     if (!humanId) {
       return {

@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type AgentkitTestModule = typeof import('@worldcoin/agentkit') & {
   __mockLookupHuman: ReturnType<typeof vi.fn>;
   __mockTryIncrementUsage: ReturnType<typeof vi.fn>;
+  __mockHasUsedNonce: ReturnType<typeof vi.fn>;
+  __mockRecordNonce: ReturnType<typeof vi.fn>;
 };
 
 async function importMockAgentkit(): Promise<AgentkitTestModule> {
@@ -36,6 +38,18 @@ vi.mock('@worldcoin/agentkit', () => {
   const mockTryIncrementUsage = vi.fn().mockResolvedValue(true);
   const mockHasUsedNonce = vi.fn().mockResolvedValue(false);
   const mockRecordNonce = vi.fn().mockResolvedValue(undefined);
+  const mockEnrichPaymentRequiredResponse = vi.fn(async () => ({
+    info: {
+      domain: 'example.com',
+      uri: 'https://example.com/api/agent/execute-trade',
+      version: '1',
+      nonce: 'challenge-nonce',
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    },
+    supportedChains: [{ chainId: 'eip155:480', type: 'eip191' }],
+    schema: {},
+    mode: { type: 'free-trial', uses: 3 },
+  }));
 
   return {
     createAgentBookVerifier: vi.fn(() => ({ lookupHuman: mockLookupHuman })),
@@ -49,12 +63,17 @@ vi.mock('@worldcoin/agentkit', () => {
       hasUsedNonce = mockHasUsedNonce;
       recordNonce = mockRecordNonce;
     },
-    agentkitResourceServerExtension: { key: 'agentkit' },
+    agentkitResourceServerExtension: {
+      key: 'agentkit',
+      enrichPaymentRequiredResponse: mockEnrichPaymentRequiredResponse,
+    },
     parseAgentkitHeader: vi.fn(),
     validateAgentkitMessage: vi.fn(),
     verifyAgentkitSignature: vi.fn(),
     __mockLookupHuman: mockLookupHuman,
     __mockTryIncrementUsage: mockTryIncrementUsage,
+    __mockHasUsedNonce: mockHasUsedNonce,
+    __mockRecordNonce: mockRecordNonce,
   };
 });
 
@@ -162,6 +181,14 @@ describe('agentkit', () => {
       if (!result.granted) {
         expect(result.status).toBe(402);
         expect(result.body.error).toBe('Payment Required');
+        expect(result.body.extensions).toEqual({
+          agentkit: expect.objectContaining({
+            info: expect.objectContaining({
+              nonce: 'challenge-nonce',
+              uri: 'https://example.com/api/agent/execute-trade',
+            }),
+          }),
+        });
       }
     });
 
@@ -189,8 +216,13 @@ describe('agentkit', () => {
       const agentkit = await import('@worldcoin/agentkit');
       const parseHeader = agentkit.parseAgentkitHeader as ReturnType<typeof vi.fn>;
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
+      const mockHasUsedNonce = (agentkit as AgentkitTestModule).__mockHasUsedNonce;
 
-      parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
+      parseHeader.mockReturnValueOnce({
+        address: '0x' + 'a'.repeat(40),
+        nonce: 'nonce-1',
+        chainId: 'eip155:480',
+      });
       validateMessage.mockResolvedValueOnce({ valid: false, error: 'Domain mismatch' });
 
       const { verifyAgentkitRequest } = await import('../agentkit');
@@ -204,6 +236,14 @@ describe('agentkit', () => {
         expect(result.status).toBe(403);
         expect(result.body.reason).toBe('Domain mismatch');
       }
+      const [, , options] = validateMessage.mock.calls[0] as [
+        unknown,
+        unknown,
+        { checkNonce?: (nonce: string) => Promise<boolean> }
+      ];
+      mockHasUsedNonce.mockResolvedValueOnce(true);
+      expect(options.checkNonce).toBeTypeOf('function');
+      await expect(options.checkNonce?.('nonce-1')).resolves.toBe(false);
     });
 
     it('returns 403 when signature verification fails', async () => {
@@ -212,7 +252,11 @@ describe('agentkit', () => {
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
 
-      parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
+      parseHeader.mockReturnValueOnce({
+        address: '0x' + 'a'.repeat(40),
+        nonce: 'nonce-2',
+        chainId: 'eip155:480',
+      });
       validateMessage.mockResolvedValueOnce({ valid: true });
       verifySig.mockResolvedValueOnce({ valid: false, error: 'Bad signature' });
 
@@ -236,7 +280,11 @@ describe('agentkit', () => {
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
       const mockLookup = agentkit.__mockLookupHuman;
 
-      parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
+      parseHeader.mockReturnValueOnce({
+        address: '0x' + 'a'.repeat(40),
+        nonce: 'nonce-3',
+        chainId: 'eip155:480',
+      });
       validateMessage.mockResolvedValueOnce({ valid: true });
       verifySig.mockResolvedValueOnce({ valid: true, address: '0x' + 'a'.repeat(40) });
       mockLookup.mockResolvedValueOnce(null);
@@ -260,8 +308,13 @@ describe('agentkit', () => {
       const validateMessage = agentkit.validateAgentkitMessage as ReturnType<typeof vi.fn>;
       const verifySig = agentkit.verifyAgentkitSignature as ReturnType<typeof vi.fn>;
       const mockLookup = agentkit.__mockLookupHuman;
+      const mockRecordNonce = agentkit.__mockRecordNonce;
 
-      parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
+      parseHeader.mockReturnValueOnce({
+        address: '0x' + 'a'.repeat(40),
+        nonce: 'nonce-4',
+        chainId: 'eip155:480',
+      });
       validateMessage.mockResolvedValueOnce({ valid: true });
       verifySig.mockResolvedValueOnce({ valid: true, address: '0x' + 'a'.repeat(40) });
       mockLookup.mockResolvedValueOnce('0xhumanid123');
@@ -273,6 +326,7 @@ describe('agentkit', () => {
       });
       const result = await verifyAgentkitRequest(req);
       expect(result.granted).toBe(true);
+      expect(mockRecordNonce).toHaveBeenCalledWith('nonce-4');
     });
 
     it('returns 402 when free trial exhausted', async () => {
@@ -283,7 +337,11 @@ describe('agentkit', () => {
       const mockLookup = agentkit.__mockLookupHuman;
       const mockTryIncrement = agentkit.__mockTryIncrementUsage;
 
-      parseHeader.mockReturnValueOnce({ address: '0x' + 'a'.repeat(40) });
+      parseHeader.mockReturnValueOnce({
+        address: '0x' + 'a'.repeat(40),
+        nonce: 'nonce-5',
+        chainId: 'eip155:480',
+      });
       validateMessage.mockResolvedValueOnce({ valid: true });
       verifySig.mockResolvedValueOnce({ valid: true, address: '0x' + 'a'.repeat(40) });
       mockLookup.mockResolvedValueOnce('0xhumanid123');

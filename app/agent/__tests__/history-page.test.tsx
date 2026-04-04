@@ -58,7 +58,7 @@ const agentState = {
     status: 'active',
     usageCount: 1,
     freeTrialRemaining: 2,
-    spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' },
+    spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
     createdAt: new Date().toISOString(),
   } satisfies Agent,
   error: undefined as Error | undefined,

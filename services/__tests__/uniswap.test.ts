@@ -274,7 +274,7 @@ describe('executeSwap', () => {
 
   it('returns success on full swap flow', async () => {
     const quoteResponse = {
-      quote: { quoteDecimals: '500000', gasUseEstimate: '150000' },
+      quote: { quote: '500000000', quoteDecimals: '500', gasUseEstimate: '150000' },
     };
     const swapResponse = {
       swap: {
@@ -296,6 +296,7 @@ describe('executeSwap', () => {
     expect(result.success).toBe(true);
     expect(result.txHash).toBe('0xtxhash123');
     expect(result.amountIn).toBe(validRequest.amount);
+    expect(result.amountOut).toBe('500000000');
     expect(result.gasUsed).toBe('50000');
   });
 

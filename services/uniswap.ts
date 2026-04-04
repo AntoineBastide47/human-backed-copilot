@@ -142,7 +142,7 @@ export async function executeSwap(req: SwapRequest): Promise<SwapResult> {
       success: receipt.status === 'success',
       txHash,
       amountIn: req.amount,
-      amountOut: quoteResult.quote?.quoteDecimals ?? quoteResult.quote?.quote ?? '0',
+      amountOut: quoteResult.quote?.quote ?? quoteResult.quote?.quoteDecimals ?? '0',
       gasUsed: receipt.gasUsed.toString(),
       error: receipt.status !== 'success' ? 'Transaction reverted' : undefined,
     };

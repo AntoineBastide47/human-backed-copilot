@@ -29,8 +29,8 @@ export const DEMO_AGENT = {
   usageCount: 8,
   freeTrialRemaining: 2,
   spendLimits: {
-    maxPerTx:  '1000000000000000000', // 1 WETH / 1e6 USDC (depending on context)
-    dailyCap:  '5000000000000000000', // 5 WETH / 5e6 USDC
+    maxPerTx:  '1000000000', // $1,000 USDC
+    dailyCap:  '5000000000', // $5,000 USDC
   },
 };
 

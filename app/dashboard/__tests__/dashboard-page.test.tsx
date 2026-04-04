@@ -36,7 +36,7 @@ const makeAgent = (overrides: Partial<Agent> = {}): Agent => ({
   status: 'active',
   usageCount: 5,
   freeTrialRemaining: 3,
-  spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' },
+  spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
   createdAt: new Date().toISOString(),
   ...overrides,
 })

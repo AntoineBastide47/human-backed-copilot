@@ -69,7 +69,7 @@ describe('GET /api/agent/market-data', () => {
   it('returns 200 with quote data on success', async () => {
     mockVerifyAgentkitRequest.mockResolvedValue({ granted: true });
     mockGetQuote.mockResolvedValue({
-      quote: { quoteDecimals: '950000', gasUseEstimate: '150000' },
+      quote: { quote: '950000000', quoteDecimals: '950', gasUseEstimate: '150000' },
       gasEstimate: '150000',
     });
 
@@ -82,7 +82,7 @@ describe('GET /api/agent/market-data', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.tokenIn).toBe('0x4200000000000000000000000000000000000006');
-    expect(data.estimatedOutput).toBe('950000');
+    expect(data.estimatedOutput).toBe('950000000');
     expect(data.gasEstimate).toBe('150000');
   });
 

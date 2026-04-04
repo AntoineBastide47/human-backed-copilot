@@ -3,6 +3,8 @@ import { getSessionUserId, AuthError } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { E, isValidAddress } from '@/lib/api-response';
 import { toAgentResponse } from '@/lib/agent-service';
+import { verifyAgentIsHuman } from '@/services/agentkit';
+import { DEFAULT_SPEND_LIMITS } from '@/lib/spend-limits';
 import type { Agent } from '@/types';
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -28,7 +30,6 @@ interface CreateBody {
   walletAddress: string;
   ensName?: string;
   spendLimits?: { maxPerTx: string; dailyCap: string };
-  txHash?: string; // userOpHash from MiniKit.sendTransaction
 }
 
 export async function POST(req: Request): Promise<NextResponse<Agent | { error: string }>> {
@@ -51,14 +52,18 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     return E.badRequest('Invalid JSON');
   }
 
-  const { walletAddress, ensName, spendLimits, txHash } = body;
+  const { walletAddress, ensName, spendLimits } = body;
   if (!walletAddress || !isValidAddress(walletAddress)) {
     return E.badRequest('Invalid walletAddress');
   }
 
-  // Production: require txHash from MiniKit.sendTransaction
-  if (!isDemoMode && !txHash) {
-    return E.badRequest('txHash required (from on-chain registration)');
+  if (!isDemoMode) {
+    const isRegistered = await verifyAgentIsHuman(walletAddress);
+    if (!isRegistered) {
+      return E.forbidden(
+        `Agent wallet is not registered in AgentBook. Run: npx @worldcoin/agentkit-cli register ${walletAddress}`,
+      );
+    }
   }
 
   const agent = await db.agent.create({
@@ -67,8 +72,8 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
       walletAddress,
       ensName: ensName || null,
       status: 'active',
-      agentbookRegId: txHash || null,
-      spendLimits: spendLimits ?? { maxPerTx: '1000000', dailyCap: '5000000' },
+      agentbookRegId: null,
+      spendLimits: spendLimits ?? DEFAULT_SPEND_LIMITS,
     },
   });
 

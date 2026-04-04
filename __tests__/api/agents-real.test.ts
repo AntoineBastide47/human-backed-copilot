@@ -30,6 +30,7 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/services/agentkit', () => ({
   registerAgent: vi.fn().mockResolvedValue({ registered: true }),
+  verifyAgentIsHuman: vi.fn().mockResolvedValue(true),
 }));
 vi.mock('@/services/agent-runtime', () => ({
   startAgentLoop: vi.fn().mockResolvedValue(undefined),
@@ -63,7 +64,7 @@ const dbAgent = {
   id: 'a1', ownerId: 'u1', walletAddress: '0x' + 'a'.repeat(40),
   agentbookRegId: null, ensName: null, status: 'active',
   usageCount: 0, freeTrialRemaining: 3,
-  spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' }, createdAt: now,
+  spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' }, createdAt: now,
 };
 const dbUser = {
   id: 'u1', nullifierHash: '0xn', walletAddress: '0x' + 'b'.repeat(40),
@@ -126,17 +127,17 @@ describe('GET /api/agents', () => {
 describe('POST /api/agents', () => {
   beforeEach(() => {
     mockUserFindUnique.mockResolvedValue(dbUser as never);
-    mockAgentCreate.mockResolvedValue({ ...dbAgent, status: 'registering' } as never);
+    mockAgentCreate.mockResolvedValue(dbAgent as never);
   });
 
-  it('returns 201 with registering status', async () => {
+  it('returns 201 with active status', async () => {
     const res = await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
       body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
     }));
     expect(res.status).toBe(201);
     const data = await json<{ status: string }>(res);
-    expect(data.status).toBe('registering');
+    expect(data.status).toBe('active');
   });
 
   it('returns 400 for invalid walletAddress', async () => {
@@ -172,10 +173,24 @@ describe('POST /api/agents', () => {
     expect(mockAgentCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' },
+          spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
         }),
       })
     );
+  });
+
+  it('returns 403 when wallet is not registered in AgentBook', async () => {
+    const { verifyAgentIsHuman } = await import('@/services/agentkit');
+    vi.mocked(verifyAgentIsHuman).mockResolvedValueOnce(false as never);
+
+    const res = await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
+    }));
+
+    expect(res.status).toBe(403);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('agentkit-cli register');
   });
 });
 

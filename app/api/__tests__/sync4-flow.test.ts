@@ -43,7 +43,7 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/lib/agent-service', () => ({
-  toAgentResponse: vi.fn((r) => ({ ...r, createdAt: r.createdAt.toISOString(), spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' } })),
+  toAgentResponse: vi.fn((r) => ({ ...r, createdAt: r.createdAt.toISOString(), spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' } })),
   toStrategyResponse: vi.fn((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
   toProposalResponse: vi.fn((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
   toExecutionResponse: vi.fn((r) => ({ ...r, executedAt: r.executedAt.toISOString(), proposalId: r.proposalId ?? '' })),
@@ -52,7 +52,10 @@ vi.mock('@/lib/agent-service', () => ({
   updateProposalStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/services/agentkit', () => ({ registerAgent: vi.fn().mockResolvedValue({ registered: true }) }));
+vi.mock('@/services/agentkit', () => ({
+  registerAgent: vi.fn().mockResolvedValue({ registered: true }),
+  verifyAgentIsHuman: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('@/services/agent-runtime', () => ({
   startAgentLoop: vi.fn().mockResolvedValue(undefined),
   stopAgentLoop: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +64,7 @@ vi.mock('@/services/uniswap', () => ({ executeSwap: vi.fn() }));
 vi.mock('@/lib/constants', () => ({
   WORLD_ID_ACTION: 'register-agent',
   WORLD_CHAIN_ID: 480,
+  WORLD_USDC: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
 }));
 
 import { POST as verifyHandler } from '@/app/api/verify/route';
@@ -107,7 +111,7 @@ const dbAgent = {
   id: 'a1', ownerId: 'u1', walletAddress: WALLET,
   agentbookRegId: null, ensName: null, status: 'active',
   usageCount: 0, freeTrialRemaining: 3,
-  spendLimits: { maxPerTx: '1000000000000000000', dailyCap: '5000000000000000000' },
+  spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
   createdAt: now,
 };
 const dbStrategy = {
@@ -144,7 +148,7 @@ describe('Sync #4 — full backend gate', () => {
     mockUserUpsert.mockResolvedValue(dbUser as never);
     mockUserFindUnique.mockResolvedValue(dbUser as never);
     mockAgentFindUnique.mockResolvedValue(dbAgent as never);
-    mockAgentCreate.mockResolvedValue({ ...dbAgent, status: 'registering' } as never);
+    mockAgentCreate.mockResolvedValue(dbAgent as never);
     mockStrategyCreate.mockResolvedValue(dbStrategy as never);
     mockProposalFindMany.mockResolvedValue([dbProposal] as never);
     mockProposalFindUnique.mockResolvedValue(dbProposal as never);
@@ -175,13 +179,13 @@ describe('Sync #4 — full backend gate', () => {
     expect(res.headers.get('set-cookie')).toContain('session=');
   });
 
-  // Step 2 ── Register agent → status starts as 'registering'
-  it('step 2: POST /api/agents returns agent with status=registering', async () => {
+  // Step 2 ── Create agent once AgentBook registration is confirmed
+  it('step 2: POST /api/agents returns agent with status=active', async () => {
     const res = await postAgent(postReq('http://localhost/api/agents', { walletAddress: WALLET }));
     expect(res.status).toBe(201);
     const body = await json<{ id: string; status: string; spendLimits: object }>(res);
     expect(body.id).toBe('a1');
-    expect(body.status).toBe('registering');
+    expect(body.status).toBe('active');
     expect(body.spendLimits).toBeDefined();
   });
 

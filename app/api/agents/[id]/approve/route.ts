@@ -5,6 +5,11 @@ import { E } from '@/lib/api-response';
 import { markProposalExecuted } from '@/lib/agent-service';
 import { executeSwap } from '@/services/uniswap';
 import { WORLD_CHAIN_ID } from '@/lib/constants';
+import {
+  formatUsdcAmount,
+  getProposalUsdcNotional,
+  normalizeSpendLimits,
+} from '@/lib/spend-limits';
 
 export async function POST(
   req: Request,
@@ -40,16 +45,18 @@ export async function POST(
   if (proposal.agent.status !== 'active') return E.conflict('Agent is not active');
 
   // Spend limit enforcement
-  const limits = proposal.agent.spendLimits as { maxPerTx?: string; dailyCap?: string } | null;
-  if (limits?.maxPerTx) {
+  const limits = normalizeSpendLimits(
+    proposal.agent.spendLimits as { maxPerTx?: string; dailyCap?: string } | null,
+  );
+  if (limits.maxPerTx !== '0') {
     try {
-      if (BigInt(proposal.amount) > BigInt(limits.maxPerTx)) {
+      const proposalNotional = getProposalUsdcNotional(proposal);
+      if (proposalNotional > BigInt(limits.maxPerTx)) {
         return E.badRequest(
-          `Amount ${proposal.amount} exceeds maxPerTx limit ${limits.maxPerTx}`
+          `Trade size ${formatUsdcAmount(proposalNotional)} exceeds maxPerTx limit ${formatUsdcAmount(limits.maxPerTx)}`
         );
       }
     } catch {
-      // Non-numeric amount — fail safe
       return E.badRequest('Invalid proposal amount');
     }
   }

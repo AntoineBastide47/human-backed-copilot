@@ -110,6 +110,10 @@ describe('agent-runtime', () => {
     const strategy = makeStrategy({ autoExecute: false });
     mockGetAgentStrategies.mockResolvedValue([strategy]);
     mockCreateProposal.mockResolvedValue(makeProposal({ status: 'pending' }));
+    mockGetQuote.mockResolvedValue({
+      quote: { quote: '925000000', quoteDecimals: '925' },
+      gasEstimate: '150000',
+    });
 
     const { startAgentLoop } = await import('../agent-runtime');
     await startAgentLoop(AGENT_ID);
@@ -120,6 +124,7 @@ describe('agent-runtime', () => {
         strategyId: strategy.id,
         status: 'pending',
         type: 'dca_buy',
+        estimatedOutput: '925000000',
       }),
     );
     expect(mockExecuteSwap).not.toHaveBeenCalled();

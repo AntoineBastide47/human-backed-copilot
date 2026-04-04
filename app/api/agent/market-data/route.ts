@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       tokenOut,
       chainId: parsedChainId,
       amountIn: amount,
-      estimatedOutput: quote.quote?.quoteDecimals ?? quote.quote?.quote ?? null,
+      estimatedOutput: quote.quote?.quote ?? quote.quote?.quoteDecimals ?? null,
       gasEstimate: quote.gasEstimate ?? null,
     });
   } catch (err) {

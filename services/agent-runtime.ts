@@ -103,7 +103,7 @@ async function processStrategy(
   });
 
   const estimatedOutput =
-    quote.quote?.quoteDecimals ?? quote.quote?.quote ?? '0';
+    quote.quote?.quote ?? quote.quote?.quoteDecimals ?? '0';
 
   if (strategy.autoExecute) {
     const proposal = await createProposal({
