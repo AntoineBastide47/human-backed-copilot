@@ -6,6 +6,8 @@ import { toAgentResponse } from '@/lib/agent-service';
 import { registerAgent } from '@/services/agentkit';
 import type { CreateAgentInput, Agent } from '@/types';
 
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
 export async function GET(req: Request): Promise<NextResponse<Agent[] | { error: string }>> {
   let userId: string;
   try {
@@ -43,9 +45,27 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     return E.badRequest('Invalid JSON');
   }
 
-  const { walletAddress, spendLimits } = body;
+  const { walletAddress, spendLimits, proof } = body;
   if (!walletAddress || !isValidAddress(walletAddress)) {
     return E.badRequest('Invalid walletAddress');
+  }
+
+  // Demo mode: skip on-chain registration
+  if (isDemoMode) {
+    const agent = await db.agent.create({
+      data: {
+        ownerId: userId,
+        walletAddress,
+        status: 'active',
+        spendLimits: spendLimits ?? { maxPerTx: '1000000', dailyCap: '5000000' },
+      },
+    });
+    return NextResponse.json(toAgentResponse(agent), { status: 201 });
+  }
+
+  // Production: require World ID proof for on-chain registration
+  if (!proof?.merkle_root || !proof?.nullifier_hash || !proof?.proof) {
+    return E.badRequest('World ID proof required for agent registration');
   }
 
   const agent = await db.agent.create({
@@ -57,14 +77,29 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     },
   });
 
-  // Fire-and-forget: update status once AgentBook confirms registration
-  registerAgent(walletAddress)
-    .then(({ registered }) => {
-      if (registered) {
-        return db.agent.update({ where: { id: agent.id }, data: { status: 'active' } });
-      }
-    })
-    .catch((err) => console.error('[agents] registerAgent failed:', err));
+  try {
+    const result = await registerAgent(walletAddress, proof);
 
-  return NextResponse.json(toAgentResponse(agent), { status: 201 });
+    const updated = await db.agent.update({
+      where: { id: agent.id },
+      data: {
+        status: 'active',
+        agentbookRegId: result.txHash,
+      },
+    });
+
+    return NextResponse.json(toAgentResponse(updated), { status: 201 });
+  } catch (err) {
+    console.error('[agents] On-chain registration failed:', err);
+
+    await db.agent.update({
+      where: { id: agent.id },
+      data: { status: 'registering' },
+    });
+
+    return NextResponse.json(
+      { error: `Registration failed: ${err instanceof Error ? err.message : 'Unknown error'}` },
+      { status: 502 },
+    );
+  }
 }

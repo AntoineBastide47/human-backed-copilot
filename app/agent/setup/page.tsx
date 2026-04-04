@@ -1,36 +1,45 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { IDKitRequestWidget, orbLegacy, type IDKitResult } from '@worldcoin/idkit'
 import { fetchJson } from '@/components/sync4-client'
-import type { Agent } from '@/types'
+import type { Agent, WorldIdOnChainProof } from '@/types'
+import type { RpContext } from '@worldcoin/idkit'
 import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from '@/lib/client-storage'
 
-type SetupStatus = 'idle' | 'submitting' | 'registering' | 'active' | 'timeout' | 'error'
+type SetupStatus = 'idle' | 'submitting' | 'verifying' | 'registering' | 'active' | 'error'
 
-const POLL_INTERVAL_MS = 2000
-const POLL_MAX_ATTEMPTS = 30 // 60s total
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+
+// ── Step tracker ────────────────────────────────────────────────────────
 
 function StepTracker({ setupStatus }: { setupStatus: SetupStatus }) {
-  const steps = [
-    { key: 'submit',     label: 'Submitting to AgentBook' },
-    { key: 'registering', label: 'Registering on-chain'   },
-    { key: 'active',     label: 'Agent active'             },
-  ]
+  const steps = isDemoMode
+    ? [
+        { key: 'submit', label: 'Creating agent' },
+        { key: 'active', label: 'Agent active' },
+      ]
+    : [
+        { key: 'submit', label: 'Preparing verification' },
+        { key: 'verifying', label: 'World ID verification' },
+        { key: 'registering', label: 'Registering on-chain' },
+        { key: 'active', label: 'Agent active' },
+      ]
 
-  const activeIdx =
-    setupStatus === 'idle'        ? -1 :
-    setupStatus === 'submitting'  ? 0  :
-    setupStatus === 'registering' ? 1  :
-    setupStatus === 'active'      ? 2  : 0
+  const statusOrder: SetupStatus[] = isDemoMode
+    ? ['submitting', 'active']
+    : ['submitting', 'verifying', 'registering', 'active']
+
+  const activeIdx = statusOrder.indexOf(setupStatus)
 
   return (
     <div className="space-y-2 py-2">
       {steps.map((step, i) => {
-        const done    = i < activeIdx || setupStatus === 'active'
+        const done = i < activeIdx || setupStatus === 'active'
         const current = i === activeIdx && setupStatus !== 'active'
         return (
           <div key={step.key} className="flex items-center gap-3">
@@ -39,11 +48,11 @@ function StepTracker({ setupStatus }: { setupStatus: SetupStatus }) {
               current ? 'bg-black text-white'     :
                         'bg-stone-100 text-stone-400'
             }`}>
-              {done ? '✓' : i + 1}
+              {done ? '\u2713' : i + 1}
             </span>
             <span className={`text-sm ${current ? 'font-semibold' : done ? 'text-stone-400 line-through' : 'text-stone-400'}`}>
               {step.label}
-              {current && <span className="ml-1 inline-block animate-pulse">…</span>}
+              {current && <span className="ml-1 inline-block animate-pulse">...</span>}
             </span>
           </div>
         )
@@ -52,44 +61,23 @@ function StepTracker({ setupStatus }: { setupStatus: SetupStatus }) {
   )
 }
 
+// ── Main page ───────────────────────────────────────────────────────────
+
 export default function AgentSetupPage() {
   const router = useRouter()
   const [walletAddress, setWalletAddress] = useState('')
   const [ensName, setEnsName] = useState('')
   const [setupStatus, setSetupStatus] = useState<SetupStatus>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [agentId, setAgentId] = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Poll for registering → active transition
-  useEffect(() => {
-    if (!agentId || setupStatus !== 'registering') return
+  // IDKit widget state
+  const [idkitOpen, setIdkitOpen] = useState(false)
+  const [rpContext, setRpContext] = useState<RpContext | null>(null)
+  const [appId, setAppId] = useState<`app_${string}` | null>(null)
+  const [action, setAction] = useState<string>('')
 
-    let attempts = 0
-
-    const poll = async () => {
-      try {
-        const agent = await fetchJson<Agent>(`/api/agents/${agentId}`)
-        if (agent.status === 'active') {
-          setSetupStatus('active')
-          return
-        }
-
-        if (++attempts >= POLL_MAX_ATTEMPTS) {
-          setSetupStatus('timeout')
-          return
-        }
-
-        pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
-      } catch {
-        setSetupStatus('error')
-        setError('Could not verify agent status. Check the dashboard.')
-      }
-    }
-
-    pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
-    return () => { if (pollRef.current) clearTimeout(pollRef.current) }
-  }, [agentId, setupStatus])
+  // Store proof from IDKit for use after widget closes
+  const proofRef = useRef<WorldIdOnChainProof | null>(null)
 
   // Navigate once active
   useEffect(() => {
@@ -98,8 +86,29 @@ export default function AgentSetupPage() {
     return () => clearTimeout(t)
   }, [setupStatus, router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // ── Demo mode submit ────────────────────────────────────────────────
+
+  const handleDemoSubmit = async () => {
+    setError(null)
+    setSetupStatus('submitting')
+
+    try {
+      const agent = await fetchJson<Agent>('/api/agents', {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
+      })
+
+      setLocalStorageValue('hbc_agentId', agent.id)
+      setSetupStatus('active')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+      setSetupStatus('error')
+    }
+  }
+
+  // ── Production submit: prepare → open IDKit ─────────────────────────
+
+  const handleProdSubmit = async () => {
     setError(null)
     setSetupStatus('submitting')
 
@@ -111,21 +120,97 @@ export default function AgentSetupPage() {
         return
       }
 
-      const agent = await fetchJson<Agent>('/api/agents', {
-        method: 'POST',
-        body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
-      })
+      // Get signed rp_context from backend
+      const prepared = await fetchJson<{
+        rp_context: RpContext
+        app_id: string
+        action: string
+      }>('/api/agents/prepare', { method: 'POST' })
 
-      setLocalStorageValue('hbc_agentId', agent.id)
-      setAgentId(agent.id)
-      setSetupStatus('registering')
+      setRpContext(prepared.rp_context)
+      setAppId(prepared.app_id as `app_${string}`)
+      setAction(prepared.action)
+      setSetupStatus('verifying')
+      setIdkitOpen(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setError(err instanceof Error ? err.message : 'Failed to prepare verification')
       setSetupStatus('error')
     }
   }
 
-  const isProcessing = setupStatus === 'submitting' || setupStatus === 'registering'
+  // ── IDKit handleVerify: called when proof is ready, before onSuccess ─
+
+  const handleVerify = useCallback(async (result: IDKitResult) => {
+    // Extract legacy v3 proof fields
+    const responses = result.responses
+    if (!responses || responses.length === 0) {
+      throw new Error('No proof responses from IDKit')
+    }
+
+    const resp = responses[0]
+    // v3 legacy response has proof/merkle_root/nullifier as direct fields
+    const v3 = resp as { proof?: string; merkle_root?: string; nullifier?: string }
+    if (v3.proof && v3.merkle_root && v3.nullifier) {
+      proofRef.current = {
+        proof: v3.proof,
+        merkle_root: v3.merkle_root,
+        nullifier_hash: v3.nullifier,
+      }
+    } else {
+      throw new Error('Unexpected proof format from IDKit')
+    }
+  }, [])
+
+  // ── IDKit onSuccess: proof verified, now register on-chain ──────────
+
+  const handleIdkitSuccess = useCallback(async () => {
+    const proof = proofRef.current
+    if (!proof) {
+      setError('No proof available after verification')
+      setSetupStatus('error')
+      return
+    }
+
+    setSetupStatus('registering')
+
+    try {
+      const agent = await fetchJson<Agent>('/api/agents', {
+        method: 'POST',
+        body: JSON.stringify({
+          walletAddress,
+          ensName: ensName || undefined,
+          proof,
+        }),
+      })
+
+      setLocalStorageValue('hbc_agentId', agent.id)
+      setSetupStatus('active')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'On-chain registration failed')
+      setSetupStatus('error')
+    }
+  }, [walletAddress, ensName])
+
+  // ── Form submit handler ─────────────────────────────────────────────
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const userId = getLocalStorageValue('hbc_userId')
+    if (!userId) {
+      setError('Not verified. Go back and verify with World ID first.')
+      setSetupStatus('error')
+      return
+    }
+
+    if (isDemoMode) {
+      await handleDemoSubmit()
+    } else {
+      await handleProdSubmit()
+    }
+  }
+
+  const isProcessing = setupStatus !== 'idle' && setupStatus !== 'error'
   const isDone = setupStatus === 'active'
 
   return (
@@ -140,21 +225,8 @@ export default function AgentSetupPage() {
           <StepTracker setupStatus={setupStatus} />
           {isDone && (
             <p className="text-sm text-green-600 font-medium text-center">
-              Agent active — heading to strategies…
+              Agent active — heading to strategies...
             </p>
-          )}
-          {setupStatus === 'timeout' && (
-            <div className="space-y-3">
-              <p className="text-sm text-yellow-600 text-center">
-                Registration is still propagating. You can keep waiting here or jump to the dashboard.
-              </p>
-              <Link
-                href="/dashboard"
-                className="block w-full rounded-2xl bg-stone-900 py-3 text-center text-sm font-semibold text-white"
-              >
-                Open Dashboard
-              </Link>
-            </div>
           )}
           {setupStatus === 'error' && error && (
             <div className="space-y-3">
@@ -164,6 +236,7 @@ export default function AgentSetupPage() {
                 onClick={() => {
                   setSetupStatus('idle')
                   setError(null)
+                  proofRef.current = null
                 }}
                 className="w-full rounded-2xl border border-stone-200 py-3 text-sm font-semibold text-stone-700"
               >
@@ -210,7 +283,7 @@ export default function AgentSetupPage() {
 
           <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-500 space-y-1">
             <p className="font-semibold text-stone-700">Default spend limits</p>
-            <p>Max per trade: $1,000 USDC · Daily cap: $5,000 USDC</p>
+            <p>Max per trade: $1,000 USDC - Daily cap: $5,000 USDC</p>
           </div>
 
           {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
@@ -223,6 +296,25 @@ export default function AgentSetupPage() {
             {isProcessing ? 'Registering...' : 'Register Agent'}
           </button>
         </form>
+      )}
+
+      {/* IDKit widget — rendered when rp_context is ready */}
+      {rpContext && appId && action && (
+        <IDKitRequestWidget
+          app_id={appId}
+          action={action}
+          rp_context={rpContext}
+          preset={orbLegacy({ signal: walletAddress })}
+          allow_legacy_proofs={true}
+          open={idkitOpen}
+          onOpenChange={setIdkitOpen}
+          handleVerify={handleVerify}
+          onSuccess={handleIdkitSuccess}
+          onError={(code) => {
+            setError(`World ID verification failed: ${code}`)
+            setSetupStatus('error')
+          }}
+        />
       )}
     </div>
   )

@@ -3,6 +3,9 @@ export const WORLD_CHAIN_ID = 480;
 export const WORLD_CHAIN_CAIP2 = 'eip155:480';
 export const WORLD_USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
 
+// AgentBook (World Chain mainnet)
+export const AGENT_BOOK_ADDRESS = '0xA23aB2712eA7BBa896930544C7d6636a96b944dA' as const;
+
 // Uniswap
 export const UNISWAP_API_BASE = 'https://trade-api.gateway.uniswap.org';
 export const UNISWAP_ROUTER_VERSION = '2.0';

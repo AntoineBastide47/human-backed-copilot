@@ -9,6 +9,28 @@ async function importMockAgentkit(): Promise<AgentkitTestModule> {
   return (await import('@worldcoin/agentkit')) as AgentkitTestModule;
 }
 
+const mockWriteContract = vi.fn();
+const mockWaitForTransactionReceipt = vi.fn();
+const mockReadContract = vi.fn();
+
+vi.mock('../wallet', () => ({
+  getWalletClient: () => ({ writeContract: mockWriteContract }),
+  getPublicClient: () => ({
+    readContract: mockReadContract,
+    waitForTransactionReceipt: mockWaitForTransactionReceipt,
+  }),
+}));
+
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>();
+  return {
+    ...actual,
+    decodeAbiParameters: vi.fn(() => [
+      [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n],
+    ]),
+  };
+});
+
 vi.mock('@worldcoin/agentkit', () => {
   const mockLookupHuman = vi.fn();
   const mockTryIncrementUsage = vi.fn().mockResolvedValue(true);
@@ -36,10 +58,18 @@ vi.mock('@worldcoin/agentkit', () => {
   };
 });
 
+const VALID_PROOF = {
+  merkle_root: '0x1234',
+  nullifier_hash: '0x5678',
+  proof: '0x' + '00'.repeat(256),
+};
+
 describe('agentkit', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     process.env.WORLD_CHAIN_RPC = 'https://rpc.example.com';
+    process.env.WALLET_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
   });
 
   describe('constants', () => {
@@ -55,34 +85,40 @@ describe('agentkit', () => {
   });
 
   describe('registerAgent', () => {
-    it('returns registered: true when agent is in AgentBook', async () => {
-      const agentkit = await importMockAgentkit();
-      const mockLookup = agentkit.__mockLookupHuman;
-      mockLookup.mockResolvedValueOnce('0xhumanid');
+    it('submits register tx and returns txHash on success', async () => {
+      mockReadContract.mockResolvedValueOnce(0n); // getNextNonce
+      mockWriteContract.mockResolvedValueOnce('0xtxhash');
+      mockWaitForTransactionReceipt.mockResolvedValueOnce({ status: 'success' });
 
       const { registerAgent } = await import('../agentkit');
-      const result = await registerAgent('0x' + 'a'.repeat(40));
+      const result = await registerAgent('0x' + 'a'.repeat(40), VALID_PROOF);
       expect(result.registered).toBe(true);
+      expect(result.txHash).toBe('0xtxhash');
     });
 
-    it('returns registered: false when agent is not in AgentBook', async () => {
-      const agentkit = await importMockAgentkit();
-      const mockLookup = agentkit.__mockLookupHuman;
-      mockLookup.mockResolvedValueOnce(null);
+    it('throws when tx reverts', async () => {
+      mockReadContract.mockResolvedValueOnce(0n);
+      mockWriteContract.mockResolvedValueOnce('0xfailed');
+      mockWaitForTransactionReceipt.mockResolvedValueOnce({ status: 'reverted' });
 
       const { registerAgent } = await import('../agentkit');
-      const result = await registerAgent('0x' + 'b'.repeat(40));
-      expect(result.registered).toBe(false);
+      await expect(
+        registerAgent('0x' + 'b'.repeat(40), VALID_PROOF),
+      ).rejects.toThrow('reverted');
     });
 
     it('throws on invalid wallet address', async () => {
       const { registerAgent } = await import('../agentkit');
-      await expect(registerAgent('bad-address')).rejects.toThrow('Invalid wallet address');
+      await expect(
+        registerAgent('bad-address', VALID_PROOF),
+      ).rejects.toThrow('Invalid wallet address');
     });
 
     it('throws on short address', async () => {
       const { registerAgent } = await import('../agentkit');
-      await expect(registerAgent('0x1234')).rejects.toThrow('Invalid wallet address');
+      await expect(
+        registerAgent('0x1234', VALID_PROOF),
+      ).rejects.toThrow('Invalid wallet address');
     });
   });
 

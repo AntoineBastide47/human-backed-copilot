@@ -122,9 +122,16 @@ export interface QuoteResult {
 }
 
 // ── Request bodies ──
+export interface WorldIdOnChainProof {
+  merkle_root: string;
+  nullifier_hash: string;
+  proof: string; // ABI-encoded uint256[8]
+}
+
 export interface CreateAgentInput {
   walletAddress: string;
   spendLimits?: { maxPerTx: string; dailyCap: string };
+  proof?: WorldIdOnChainProof;
 }
 export interface CreateStrategyInput {
   name: string;
