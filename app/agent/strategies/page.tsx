@@ -6,11 +6,18 @@ import { fetchJson, toTokenAmount, tokenSymbol } from '@/components/sync4-client
 import { useAgentId } from '@/components/use-agent-id'
 import { WORLD_CHAIN_ID } from '@/lib/constants'
 
+const TOKENS = [
+  { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006' },
+  { symbol: 'USDC', address: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
+  { symbol: 'WLD',  address: '0x163f8C2467924be0ae7B5347228CABF260318753' },
+  { symbol: 'WBTC', address: '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa' },
+] as const
+
 const TOKEN_PAIRS = [
-  { label: 'WETH → USDC', tokenIn: '0x4200000000000000000000000000000000000006', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
-  { label: 'USDC → WETH', tokenIn: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', tokenOut: '0x4200000000000000000000000000000000000006' },
-  { label: 'WLD → USDC',  tokenIn: '0x163f8C2467924be0ae7B5347228CABF260318753', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
-  { label: 'WBTC → USDC', tokenIn: '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
+  { tokenIn: '0x4200000000000000000000000000000000000006', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
+  { tokenIn: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', tokenOut: '0x4200000000000000000000000000000000000006' },
+  { tokenIn: '0x163f8C2467924be0ae7B5347228CABF260318753', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
+  { tokenIn: '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa', tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' },
 ] as const
 
 type Interval = 'hourly' | 'daily' | 'weekly'
@@ -18,15 +25,16 @@ type Interval = 'hourly' | 'daily' | 'weekly'
 export default function StrategiesPage() {
   const router = useRouter()
   const { agentId, hydrated, isResolving } = useAgentId()
-  const [pairIdx, setPairIdx] = useState(0)
+  const [tokenIn, setTokenIn] = useState(TOKEN_PAIRS[0].tokenIn)
+  const [tokenOut, setTokenOut] = useState(TOKEN_PAIRS[0].tokenOut)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
   const [autoExecute, setAutoExecute] = useState(false)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  const pair = TOKEN_PAIRS[pairIdx]
-  const tokenInSymbol = tokenSymbol(pair.tokenIn)
+  const availableOuts = TOKEN_PAIRS.filter(p => p.tokenIn === tokenIn).map(p => p.tokenOut)
+  const tokenInSymbol = tokenSymbol(tokenIn)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,14 +48,14 @@ export default function StrategiesPage() {
         return
       }
 
-      const amountRaw = toTokenAmount(amount, pair.tokenIn)
+      const amountRaw = toTokenAmount(amount, tokenIn)
 
       await fetchJson(`/api/agents/${agentId}/strategies`, {
         method: 'POST',
         body: JSON.stringify({
           name: `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`,
-          tokenIn: pair.tokenIn,
-          tokenOut: pair.tokenOut,
+          tokenIn,
+          tokenOut,
           chainId: WORLD_CHAIN_ID,
           amountPerInterval: amountRaw,
           interval,
@@ -103,15 +111,32 @@ export default function StrategiesPage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-2">Token Pair</label>
-          <select
-            value={pairIdx}
-            onChange={e => setPairIdx(Number(e.target.value))}
-            className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-black appearance-none"
-          >
-            {TOKEN_PAIRS.map((p, i) => (
-              <option key={i} value={i}>{p.label}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={tokenIn}
+              onChange={e => {
+                const next = e.target.value
+                setTokenIn(next)
+                const outs = TOKEN_PAIRS.filter(p => p.tokenIn === next).map(p => p.tokenOut)
+                setTokenOut(outs[0] ?? '')
+              }}
+              className="flex-1 px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-black appearance-none"
+            >
+              {TOKENS.map(t => (
+                <option key={t.address} value={t.address}>{t.symbol}</option>
+              ))}
+            </select>
+            <span className="text-stone-400 font-bold shrink-0">→</span>
+            <select
+              value={tokenOut}
+              onChange={e => setTokenOut(e.target.value)}
+              className="flex-1 px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-black appearance-none"
+            >
+              {availableOuts.map(addr => (
+                <option key={addr} value={addr}>{tokenSymbol(addr)}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>
