@@ -73,3 +73,30 @@ export async function PATCH(
 
   return NextResponse.json(toAgentResponse(updated));
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<{ success: boolean } | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
+  const { id } = await params;
+  const agent = await db.agent.findUnique({ where: { id } });
+  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
+
+  stopAgentLoop(id).catch(() => {});
+
+  // Delete in dependency order (no cascade configured in schema)
+  await db.execution.deleteMany({ where: { agentId: id } });
+  await db.proposal.deleteMany({ where: { agentId: id } });
+  await db.agentStrategy.deleteMany({ where: { agentId: id } });
+  await db.agent.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
+}

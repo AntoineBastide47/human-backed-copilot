@@ -177,17 +177,26 @@ export default function DashboardPage() {
         ) : agentLoading && !agent ? (
           <AgentCardSkeleton />
         ) : agent ? (
-          <div className="bg-secondary rounded-xl p-6 text-on-secondary shadow-[0_8px_32px_-8px_rgba(83,95,120,0.3)] relative overflow-hidden">
-            <div className="absolute -right-12 -top-12 w-48 h-48 bg-white/5 rounded-full blur-3xl" />
-            <p className="text-[10px] font-medium tracking-[0.05em] uppercase text-secondary-fixed/70 mb-1">
-              Active Agent
-            </p>
-            <h2 className="text-2xl font-extrabold tracking-tight leading-none">{agentDisplay}</h2>
-            <div className="mt-4 flex items-center gap-2">
-              <span className={`text-xs font-bold px-2 py-1 rounded-lg ${statusColors[agent.status]}`}>
+          <div className="bg-surface-container-lowest rounded-xl px-5 py-4 border border-outline-variant/10 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Active Agent</p>
+              <h2 className="text-base font-bold text-on-surface">{agentDisplay}</h2>
+              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[agent.status]}`}>
                 {agent.status}
               </span>
             </div>
+            <button
+              onClick={() => {
+                if (confirm('Delete this agent?')) {
+                  fetchJson(`/api/agents/${agentId}`, { method: 'DELETE' }).catch(() => {})
+                  setAgentId(null)
+                }
+              }}
+              className="w-9 h-9 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
+              aria-label="Delete agent"
+            >
+              <span className="material-symbols-outlined text-xl">delete</span>
+            </button>
           </div>
         ) : (
           <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
