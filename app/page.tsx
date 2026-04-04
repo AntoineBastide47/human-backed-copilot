@@ -26,32 +26,6 @@ export default function HomePage() {
         </h1>
       </section>
 
-      {/* World ID card */}
-      <section>
-        <div className="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant/10 shadow-[0_4px_24px_-4px_rgba(38,52,61,0.06)]">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-secondary text-2xl">fingerprint</span>
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-lg font-bold text-on-surface">Proof of Personhood</h2>
-              <p className="text-sm text-on-surface-variant leading-relaxed">
-                This app uses <span className="font-bold text-secondary">World ID</span> to verify you are a unique human — no personal data collected.
-              </p>
-            </div>
-          </div>
-          <div className="mt-6 pt-6 border-t border-outline-variant/10 grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-outline font-bold">Privacy</p>
-              <p className="text-sm font-semibold text-on-surface">Zero-Knowledge</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wider text-outline font-bold">Security</p>
-              <p className="text-sm font-semibold text-on-surface">Orb-Verified</p>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Features */}
       <section>
@@ -100,18 +74,6 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Info grid */}
-      <section className="grid grid-cols-6 gap-4 pb-4">
-        <div className="col-span-4 bg-surface-container-highest/40 p-5 rounded-xl space-y-2">
-          <span className="material-symbols-outlined text-primary">history_edu</span>
-          <h3 className="text-sm font-bold text-on-surface">Audit Trail</h3>
-          <p className="text-xs text-on-surface-variant">Immutable logs of all verification and execution events.</p>
-        </div>
-        <div className="col-span-2 bg-primary text-white p-5 rounded-xl flex flex-col justify-between">
-          <span className="material-symbols-outlined">shield</span>
-          <span className="text-[10px] font-bold uppercase tracking-widest">Active</span>
-        </div>
-      </section>
     </div>
   )
 }
