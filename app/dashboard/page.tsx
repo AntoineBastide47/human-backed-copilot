@@ -228,7 +228,7 @@ export default function DashboardPage() {
 
       {isDeleteConfirmOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end bg-black/45 px-4 pb-6 pt-16"
+          className="fixed inset-0 z-[60] flex items-end bg-black/45 px-4 pb-28 pt-16"
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-agent-title"
