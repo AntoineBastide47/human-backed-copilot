@@ -166,14 +166,14 @@ export default function StrategiesPage() {
             <button
               type="button"
               onClick={() => setAutoExecute(v => !v)}
-              className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+              className={`relative w-12 h-6 rounded-full overflow-hidden transition-colors flex-shrink-0 ${
                 autoExecute ? 'bg-black' : 'bg-stone-200'
               }`}
               role="switch"
               aria-checked={autoExecute}
             >
               <span
-                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
                   autoExecute ? 'translate-x-[26px]' : 'translate-x-0.5'
                 }`}
               />
