@@ -324,6 +324,27 @@ describe('POST /api/agents/[id]/strategies', () => {
     );
     expect(res.status).toBe(404);
   });
+
+  it('returns 409 when agent is still registering', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, status: 'registering' } as never);
+    const res = await postStrategy(
+      req('http://localhost/api/agents/a1/strategies', { method: 'POST', body: JSON.stringify(validStrategy) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(409);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('registering');
+    expect(mockStrategyCreate).not.toHaveBeenCalled();
+  });
+
+  it('allows strategy creation on a paused agent', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, status: 'paused' } as never);
+    const res = await postStrategy(
+      req('http://localhost/api/agents/a1/strategies', { method: 'POST', body: JSON.stringify(validStrategy) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(201);
+  });
 });
 
 // ── GET /api/agents/[id]/proposals ────────────────────────────────────────────

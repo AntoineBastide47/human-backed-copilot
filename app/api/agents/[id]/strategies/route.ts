@@ -51,7 +51,9 @@ export async function POST(
   }
 
   const { id } = await params;
-  if (!(await assertOwnership(id, userId))) return E.notFound('Agent not found');
+  const agent = await assertOwnership(id, userId);
+  if (!agent) return E.notFound('Agent not found');
+  if (agent.status === 'registering') return E.conflict('Agent is still registering with AgentBook');
 
   let body: CreateStrategyInput;
   try {

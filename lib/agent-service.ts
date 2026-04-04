@@ -134,6 +134,27 @@ export async function saveExecution(data: SaveExecutionInput): Promise<Execution
 }
 
 /**
+ * Returns the executedAt timestamp of the most recent execution for a strategy.
+ * Used by P0 agent-runtime to enforce interval scheduling (hourly/daily/weekly).
+ */
+export async function getLastExecutionForStrategy(strategyId: string): Promise<Date | null> {
+  const row = await db.execution.findFirst({
+    where: { strategyId },
+    orderBy: { executedAt: 'desc' },
+    select: { executedAt: true },
+  });
+  return row?.executedAt ?? null;
+}
+
+/**
+ * Updates a proposal's status in place.
+ * Used by P0 agent-runtime to roll back auto-execute failures to 'pending'.
+ */
+export async function updateProposalStatus(proposalId: string, status: string): Promise<void> {
+  await db.proposal.update({ where: { id: proposalId }, data: { status } });
+}
+
+/**
  * Returns the most recent non-rejected/executed proposal for this strategy
  * within the given time window. Used by P0 to deduplicate proposal creation.
  */

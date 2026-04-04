@@ -48,6 +48,8 @@ vi.mock('@/lib/agent-service', () => ({
   toProposalResponse: vi.fn((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
   toExecutionResponse: vi.fn((r) => ({ ...r, executedAt: r.executedAt.toISOString(), proposalId: r.proposalId ?? '' })),
   markProposalExecuted: vi.fn(),
+  getLastExecutionForStrategy: vi.fn().mockResolvedValue(null),
+  updateProposalStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/services/agentkit', () => ({ registerAgent: vi.fn().mockResolvedValue({ registered: true }) }));
@@ -324,6 +326,22 @@ describe('Sync #4 — full backend gate', () => {
     expect(res.status).toBe(400);
     expect(mockProposalUpdate).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { status: 'pending' } });
     expect(mockMarkExecuted).not.toHaveBeenCalled();
+  });
+
+  // ── Gate ordering: strategy cannot be created before agent is active ────────
+
+  it('blocks strategy creation while agent is still registering', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, status: 'registering' } as never);
+    const res = await postStrategy(
+      postReq('http://localhost/api/agents/a1/strategies', {
+        name: 'Daily DCA', tokenIn: TOKEN_IN, tokenOut: TOKEN_OUT,
+        amountPerInterval: '1000000', interval: 'daily',
+      }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(409);
+    const body = await json<{ error: string }>(res);
+    expect(body.error).toContain('registering');
   });
 
   // ── Execution history: ordering and shape ───────────────────────────────────
