@@ -21,10 +21,12 @@ vi.mock('@/lib/auth', () => ({
 // ── DB mock (inline vi.fn() to avoid hoisting trap) ──────────────────────────
 vi.mock('@/lib/db', () => ({
   db: {
-    agent: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    $transaction: vi.fn(),
+    agent: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     user: { findUnique: vi.fn() },
-    agentStrategy: { findMany: vi.fn(), create: vi.fn() },
-    proposal: { findMany: vi.fn() },
+    agentStrategy: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    proposal: { findMany: vi.fn(), deleteMany: vi.fn() },
+    execution: { deleteMany: vi.fn() },
   },
 }));
 
@@ -42,21 +44,28 @@ vi.mock('@/lib/constants', () => ({
 }));
 
 import { GET as getAgents, POST as postAgent } from '@/app/api/agents/route';
-import { GET as getAgent, PATCH as patchAgent } from '@/app/api/agents/[id]/route';
+import { GET as getAgent, PATCH as patchAgent, DELETE as deleteAgent } from '@/app/api/agents/[id]/route';
 import { GET as getStrategies, POST as postStrategy } from '@/app/api/agents/[id]/strategies/route';
 import { GET as getProposals } from '@/app/api/agents/[id]/proposals/route';
 import { db } from '@/lib/db';
 import { getSessionUserId, AuthError } from '@/lib/auth';
+import { stopAgentLoop } from '@/services/agent-runtime';
 
 const mockGetSession = vi.mocked(getSessionUserId);
+const mockTransaction = vi.mocked(db.$transaction);
 const mockAgentFindMany = vi.mocked(db.agent.findMany);
 const mockAgentFindUnique = vi.mocked(db.agent.findUnique);
 const mockAgentCreate = vi.mocked(db.agent.create);
 const mockAgentUpdate = vi.mocked(db.agent.update);
+const mockAgentDelete = vi.mocked(db.agent.delete);
 const mockUserFindUnique = vi.mocked(db.user.findUnique);
 const mockStrategyFindMany = vi.mocked(db.agentStrategy.findMany);
 const mockStrategyCreate = vi.mocked(db.agentStrategy.create);
+const mockStrategyDeleteMany = vi.mocked(db.agentStrategy.deleteMany);
 const mockProposalFindMany = vi.mocked(db.proposal.findMany);
+const mockProposalDeleteMany = vi.mocked(db.proposal.deleteMany);
+const mockExecutionDeleteMany = vi.mocked(db.execution.deleteMany);
+const mockStopAgentLoop = vi.mocked(stopAgentLoop);
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 const now = new Date();
@@ -92,6 +101,12 @@ async function json<T>(res: Response): Promise<T> {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetSession.mockResolvedValue('u1' as never);
+  mockTransaction.mockImplementation(async (callback) => {
+    if (typeof callback !== 'function') {
+      throw new Error('Expected transaction callback');
+    }
+    return callback(db as never);
+  });
 });
 
 // ── GET /api/agents ───────────────────────────────────────────────────────────
@@ -133,34 +148,42 @@ describe('POST /api/agents', () => {
   it('returns 201 with active status', async () => {
     const res = await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
+      body: JSON.stringify({}),
     }));
     expect(res.status).toBe(201);
     const data = await json<{ status: string }>(res);
     expect(data.status).toBe('active');
   });
 
-  it('returns 400 for invalid walletAddress', async () => {
-    const res = await postAgent(req('http://localhost/api/agents', {
+  it('uses the verified World wallet instead of any posted wallet address', async () => {
+    await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress: 'not-an-address' }),
+      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
     }));
-    expect(res.status).toBe(400);
-  });
 
-  it('returns 400 for missing walletAddress', async () => {
-    const res = await postAgent(req('http://localhost/api/agents', {
-      method: 'POST',
-      body: JSON.stringify({}),
-    }));
-    expect(res.status).toBe(400);
+    expect(mockAgentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          walletAddress: dbUser.walletAddress,
+        }),
+      })
+    );
   });
 
   it('returns 403 when user is not verified', async () => {
     mockUserFindUnique.mockResolvedValue({ ...dbUser, isVerified: false } as never);
     const res = await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
+      body: JSON.stringify({}),
+    }));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when the verified World wallet is missing', async () => {
+    mockUserFindUnique.mockResolvedValue({ ...dbUser, walletAddress: '' } as never);
+    const res = await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({}),
     }));
     expect(res.status).toBe(403);
   });
@@ -168,11 +191,12 @@ describe('POST /api/agents', () => {
   it('defaults spendLimits when not provided', async () => {
     await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
+      body: JSON.stringify({}),
     }));
     expect(mockAgentCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          walletAddress: dbUser.walletAddress,
           spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
         }),
       })
@@ -185,7 +209,7 @@ describe('POST /api/agents', () => {
 
     const res = await postAgent(req('http://localhost/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress: '0x' + 'a'.repeat(40) }),
+      body: JSON.stringify({}),
     }));
 
     expect(res.status).toBe(403);
@@ -496,5 +520,52 @@ describe('PATCH /api/agents/[id]', () => {
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// ── DELETE /api/agents/[id] ───────────────────────────────────────────────────
+
+describe('DELETE /api/agents/[id]', () => {
+  beforeEach(() => {
+    mockAgentFindUnique.mockResolvedValue(dbAgent as never);
+    mockAgentFindMany.mockResolvedValue([{ id: 'a1' }, { id: 'a2' }] as never);
+    mockExecutionDeleteMany.mockResolvedValue({ count: 1 } as never);
+    mockProposalDeleteMany.mockResolvedValue({ count: 1 } as never);
+    mockStrategyDeleteMany.mockResolvedValue({ count: 1 } as never);
+    mockAgentDelete.mockResolvedValue(dbAgent as never);
+    mockStopAgentLoop.mockResolvedValue(undefined as never);
+  });
+
+  it('deletes every owned agent and dependent records for the user', async () => {
+    const res = await deleteAgent(
+      req('http://localhost/api/agents/a1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(await json<{ deleted: boolean }>(res)).toEqual({ deleted: true });
+    expect(mockAgentFindMany).toHaveBeenCalledWith({
+      where: { ownerId: 'u1' },
+      select: { id: true },
+    });
+    expect(mockExecutionDeleteMany).toHaveBeenCalledWith({ where: { agentId: { in: ['a1', 'a2'] } } });
+    expect(mockProposalDeleteMany).toHaveBeenCalledWith({ where: { agentId: { in: ['a1', 'a2'] } } });
+    expect(mockStrategyDeleteMany).toHaveBeenCalledWith({ where: { agentId: { in: ['a1', 'a2'] } } });
+    expect(mockAgentDelete).toHaveBeenCalledWith({ where: { id: 'a1' } });
+    expect(mockAgentDelete).toHaveBeenCalledWith({ where: { id: 'a2' } });
+    expect(mockStopAgentLoop).toHaveBeenCalledWith('a1');
+    expect(mockStopAgentLoop).toHaveBeenCalledWith('a2');
+  });
+
+  it('returns 404 when agent does not belong to the session user', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, ownerId: 'other-user' } as never);
+    const res = await deleteAgent(
+      req('http://localhost/api/agents/a1', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+
+    expect(res.status).toBe(404);
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockStopAgentLoop).not.toHaveBeenCalled();
   });
 });

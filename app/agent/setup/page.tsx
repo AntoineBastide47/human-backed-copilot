@@ -71,6 +71,12 @@ export default function AgentSetupPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const storedWalletAddress = getLocalStorageValue('hbc_walletAddress')
+    if (!storedWalletAddress) return
+    setWalletAddress((current) => current || storedWalletAddress)
+  }, [])
+
+  useEffect(() => {
     if (setupStatus !== 'active') return
     const t = setTimeout(() => router.push('/agent/strategies'), 1400)
     return () => clearTimeout(t)
@@ -83,7 +89,7 @@ export default function AgentSetupPage() {
   async function createAgent() {
     const agent = await fetchJson<Agent>('/api/agents', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
+      body: JSON.stringify({ ensName: ensName || undefined }),
     })
 
     setLocalStorageValue('hbc_agentId', agent.id)
@@ -98,6 +104,12 @@ export default function AgentSetupPage() {
     const userId = getLocalStorageValue('hbc_userId')
     if (!userId) {
       setError('Not verified. Go back and verify with World ID first.')
+      setSetupStatus('error')
+      return
+    }
+
+    if (!walletAddress) {
+      setError('Missing verified World wallet. Go back and log in with World App first.')
       setSetupStatus('error')
       return
     }
@@ -152,29 +164,31 @@ export default function AgentSetupPage() {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">
-              Agent Wallet Address
+            <label htmlFor="agent-wallet-address" className="block text-sm font-medium text-stone-700 mb-1">
+              World Wallet Address
             </label>
             <input
+              id="agent-wallet-address"
               type="text"
               value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
               placeholder="0x..."
-              required
-              pattern="^0x[0-9a-fA-F]{40}$"
+              readOnly
               className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm font-mono placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-black"
             />
             <p className="mt-1 text-xs text-stone-400">
-              Fund this wallet with ETH for gas on World Chain.
+              {walletAddress
+                ? 'Locked to the wallet you verified with World App. Fund this wallet with ETH for gas on World Chain.'
+                : 'Verify with World App first so we can load your wallet here.'}
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">
+            <label htmlFor="agent-ens-name" className="block text-sm font-medium text-stone-700 mb-1">
               ENS Name <span className="text-stone-400 font-normal">(optional)</span>
             </label>
             <div className="flex items-center border border-stone-200 rounded-xl bg-white overflow-hidden focus-within:ring-2 focus-within:ring-black">
               <input
+                id="agent-ens-name"
                 type="text"
                 value={ensName}
                 onChange={(e) => setEnsName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}

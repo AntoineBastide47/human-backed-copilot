@@ -73,3 +73,40 @@ export async function PATCH(
 
   return NextResponse.json(toAgentResponse(updated));
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<{ deleted: true } | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
+  const { id } = await params;
+  const agent = await db.agent.findUnique({ where: { id } });
+  if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
+  const ownedAgents = await db.agent.findMany({
+    where: { ownerId: userId },
+    select: { id: true },
+  });
+  const ownedAgentIds = ownedAgents.map((ownedAgent) => ownedAgent.id);
+
+  await db.$transaction(async (tx) => {
+    await tx.execution.deleteMany({ where: { agentId: { in: ownedAgentIds } } });
+    await tx.proposal.deleteMany({ where: { agentId: { in: ownedAgentIds } } });
+    await tx.agentStrategy.deleteMany({ where: { agentId: { in: ownedAgentIds } } });
+    for (const ownedAgentId of ownedAgentIds) {
+      await tx.agent.delete({ where: { id: ownedAgentId } });
+    }
+  });
+
+  for (const ownedAgentId of ownedAgentIds) {
+    await stopAgentLoop(ownedAgentId).catch((err) => console.error('[agents] stopAgentLoop failed:', err));
+  }
+
+  return NextResponse.json({ deleted: true });
+}

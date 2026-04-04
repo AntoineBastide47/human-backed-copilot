@@ -27,7 +27,6 @@ export async function GET(req: Request): Promise<NextResponse<Agent[] | { error:
 }
 
 interface CreateBody {
-  walletAddress: string;
   ensName?: string;
   spendLimits?: { maxPerTx: string; dailyCap: string };
 }
@@ -52,9 +51,10 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     return E.badRequest('Invalid JSON');
   }
 
-  const { walletAddress, ensName, spendLimits } = body;
+  const { ensName, spendLimits } = body;
+  const walletAddress = user.walletAddress.trim();
   if (!walletAddress || !isValidAddress(walletAddress)) {
-    return E.badRequest('Invalid walletAddress');
+    return E.forbidden('Verified World wallet address missing. Verify with World App again.');
   }
 
   if (!isDemoMode) {
