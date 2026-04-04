@@ -94,7 +94,7 @@ export default function ProposalsPage() {
                 txHash: data.txHash ?? '',
                 amountIn: proposal.amount,
                 amountOut: proposal.estimatedOutput,
-                status: 'confirmed',
+                status: data.txHash ? 'confirmed' : 'pending',
                 executedAt: new Date().toISOString(),
                 tokenIn: proposal.tokenIn,
                 tokenOut: proposal.tokenOut,

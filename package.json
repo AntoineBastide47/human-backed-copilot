@@ -13,7 +13,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "worker": "tsx scripts/agent-worker.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "stage:trades": "tsx scripts/stage-trades.ts",
+    "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.2.2",
