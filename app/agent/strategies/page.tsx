@@ -186,17 +186,14 @@ export default function StrategiesPage() {
             <button
               type="button"
               onClick={() => setAutoExecute(v => !v)}
-              className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                autoExecute ? 'bg-black' : 'bg-stone-200'
+              aria-pressed={autoExecute}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 ${
+                autoExecute
+                  ? 'bg-black text-white'
+                  : 'bg-stone-100 text-stone-500'
               }`}
-              role="switch"
-              aria-checked={autoExecute}
             >
-              <span
-                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                  autoExecute ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
+              {autoExecute ? 'Enabled' : 'Disabled'}
             </button>
           </div>
         </div>

@@ -11,54 +11,38 @@ function AutoExecuteToggle() {
       type="button"
       onClick={() => setAutoExecute(v => !v)}
       data-testid="toggle"
-      role="switch"
-      aria-checked={autoExecute}
-      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-        autoExecute ? 'bg-black' : 'bg-stone-200'
+      aria-pressed={autoExecute}
+      className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 ${
+        autoExecute ? 'bg-black text-white' : 'bg-stone-100 text-stone-500'
       }`}
     >
-      <span
-        data-testid="thumb"
-        className={`absolute inset-y-0 my-auto w-5 h-5 rounded-full bg-white transition-transform ${
-          autoExecute ? 'translate-x-[28px]' : 'translate-x-0'
-        }`}
-      />
+      {autoExecute ? 'Enabled' : 'Disabled'}
     </button>
   )
 }
 
 describe('AutoExecuteToggle', () => {
-  it('is off by default', () => {
+  it('shows Disabled and aria-pressed=false by default', () => {
     render(<AutoExecuteToggle />)
-    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
+    const btn = screen.getByTestId('toggle')
+    expect(btn.getAttribute('aria-pressed')).toBe('false')
+    expect(btn.textContent).toBe('Disabled')
   })
 
-  it('thumb has left position class when off', () => {
-    render(<AutoExecuteToggle />)
-    expect(screen.getByTestId('thumb').className).toContain('translate-x-0')
-  })
-
-  it('thumb has right position class when on', () => {
+  it('shows Enabled and aria-pressed=true after click', () => {
     render(<AutoExecuteToggle />)
     fireEvent.click(screen.getByTestId('toggle'))
-    expect(screen.getByTestId('thumb').className).toContain('translate-x-[28px]')
+    const btn = screen.getByTestId('toggle')
+    expect(btn.getAttribute('aria-pressed')).toBe('true')
+    expect(btn.textContent).toBe('Enabled')
   })
 
-  it('thumb right edge stays within container (28px offset + 20px width = 48px = container)', () => {
-    // Container: w-12 = 48px. Thumb: w-5 = 20px. overflow-hidden clips flush.
-    const containerWidth = 48
-    const thumbWidth = 20
-    const onOffset = 28
-
-    expect(onOffset + thumbWidth).toBeLessThanOrEqual(containerWidth)
-  })
-
-  it('toggles aria-checked on click', () => {
+  it('toggles back to Disabled on second click', () => {
     render(<AutoExecuteToggle />)
-    const toggle = screen.getByRole('switch')
-    fireEvent.click(toggle)
-    expect(toggle.getAttribute('aria-checked')).toBe('true')
-    fireEvent.click(toggle)
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    const btn = screen.getByTestId('toggle')
+    fireEvent.click(btn)
+    fireEvent.click(btn)
+    expect(btn.getAttribute('aria-pressed')).toBe('false')
+    expect(btn.textContent).toBe('Disabled')
   })
 })
