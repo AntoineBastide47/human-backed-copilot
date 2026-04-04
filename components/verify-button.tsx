@@ -62,12 +62,6 @@ export function VerifyButton({ onVerified }: Props) {
       })
 
       const walletAddress = result.data.address
-      const isOrbVerified = MiniKit.user?.verificationStatus?.isOrbVerified ?? false
-
-      if (!isOrbVerified) {
-        setError('Orb verification required. Please verify with World ID first.')
-        return
-      }
 
       // Send to backend for verification and session creation
       const data = await fetchJson<{
