@@ -103,20 +103,15 @@ export default function StrategiesPage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-2">Token Pair</label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <select
+            value={pairIdx}
+            onChange={e => setPairIdx(Number(e.target.value))}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-black appearance-none"
+          >
             {TOKEN_PAIRS.map((p, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setPairIdx(i)}
-                className={`py-3 rounded-xl text-sm font-medium border transition-all ${
-                  pairIdx === i ? 'border-black bg-black text-white' : 'border-stone-200 bg-white text-stone-700'
-                }`}
-              >
-                {p.label}
-              </button>
+              <option key={i} value={i}>{p.label}</option>
             ))}
-          </div>
+          </select>
         </div>
 
         <div>
