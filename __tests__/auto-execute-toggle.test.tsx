@@ -19,8 +19,8 @@ function AutoExecuteToggle() {
     >
       <span
         data-testid="thumb"
-        className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-          autoExecute ? 'translate-x-[26px]' : 'translate-x-0.5'
+        className={`absolute inset-y-0 my-auto w-5 h-5 rounded-full bg-white transition-transform ${
+          autoExecute ? 'translate-x-[28px]' : 'translate-x-0'
         }`}
       />
     </button>
@@ -35,26 +35,22 @@ describe('AutoExecuteToggle', () => {
 
   it('thumb has left position class when off', () => {
     render(<AutoExecuteToggle />)
-    expect(screen.getByTestId('thumb').className).toContain('translate-x-0.5')
+    expect(screen.getByTestId('thumb').className).toContain('translate-x-0')
   })
 
   it('thumb has right position class when on', () => {
     render(<AutoExecuteToggle />)
     fireEvent.click(screen.getByTestId('toggle'))
-    expect(screen.getByTestId('thumb').className).toContain('translate-x-[26px]')
+    expect(screen.getByTestId('thumb').className).toContain('translate-x-[28px]')
   })
 
-  it('thumb right edge stays within container (26px offset + 20px width = 46px < 48px container)', () => {
-    // Container: w-12 = 48px. Thumb: w-5 = 20px. ON offset: 26px.
-    // Right edge = 26 + 20 = 46px — 2px clear of the 48px container.
+  it('thumb right edge stays within container (28px offset + 20px width = 48px = container)', () => {
+    // Container: w-12 = 48px. Thumb: w-5 = 20px. overflow-hidden clips flush.
     const containerWidth = 48
     const thumbWidth = 20
-    const onOffset = 26
-    const offOffset = 2 // translate-x-0.5 = 0.125rem ≈ 2px
-    const padding = 2
+    const onOffset = 28
 
-    expect(onOffset + thumbWidth).toBeLessThanOrEqual(containerWidth - padding)
-    expect(offOffset).toBeGreaterThanOrEqual(padding)
+    expect(onOffset + thumbWidth).toBeLessThanOrEqual(containerWidth)
   })
 
   it('toggles aria-checked on click', () => {

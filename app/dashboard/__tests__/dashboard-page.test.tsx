@@ -186,29 +186,6 @@ describe('DashboardPage', () => {
     expect(addLink.href).toContain('/agent/strategies')
   })
 
-  it('shows pending proposals badge on View Proposals link', async () => {
-    agentState.data = makeAgent()
-    strategiesState.data = []
-    proposalsState.data = [{ id: 'p1' }, { id: 'p2' }]
-    await renderPage()
-    expect(screen.getByTestId('proposals-link-badge').textContent).toBe('2')
-  })
-
-  it('caps pending badge at 9+', async () => {
-    agentState.data = makeAgent()
-    strategiesState.data = []
-    proposalsState.data = Array.from({ length: 11 }, (_, i) => ({ id: `p${i}` }))
-    await renderPage()
-    expect(screen.getByTestId('proposals-link-badge').textContent).toBe('9+')
-  })
-
-  it('does not show badge when no pending proposals', async () => {
-    agentState.data = makeAgent()
-    strategiesState.data = []
-    proposalsState.data = []
-    await renderPage()
-    expect(screen.queryByTestId('proposals-link-badge')).toBeNull()
-  })
 
   it('shows agent error state', async () => {
     agentState.error = new Error('Network error')

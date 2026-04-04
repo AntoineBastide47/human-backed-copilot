@@ -9,12 +9,10 @@ export function TopAppBar() {
             <span className="material-symbols-outlined text-secondary text-base">account_balance</span>
           </div>
           <span className="text-lg font-bold text-stone-900 uppercase tracking-widest">
-            Copilot
+            Human Backed Copilot
           </span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="material-symbols-outlined text-stone-700">support_agent</span>
-        </div>
+        <div />
       </div>
       <div className="bg-slate-200/50 h-px w-full" />
     </header>

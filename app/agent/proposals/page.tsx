@@ -146,7 +146,7 @@ export default function ProposalsPage() {
 
   if (!agentId && hydrated) {
     return (
-      <div className="px-6 mt-4">
+      <div className="px-4 mt-4">
         <div className="bg-surface-container-lowest rounded-xl p-6 outline outline-1 outline-outline-variant/10 text-center space-y-4">
           <div className="w-14 h-14 rounded-full bg-surface-container flex items-center justify-center mx-auto">
             <span className="material-symbols-outlined text-on-surface-variant text-2xl">description</span>

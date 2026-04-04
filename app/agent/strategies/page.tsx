@@ -168,8 +168,8 @@ export default function StrategiesPage() {
               aria-checked={autoExecute}
             >
               <span
-                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                  autoExecute ? 'translate-x-[26px]' : 'translate-x-0.5'
+                className={`absolute inset-y-0 my-auto w-5 h-5 rounded-full bg-white transition-transform ${
+                  autoExecute ? 'translate-x-[28px]' : 'translate-x-0'
                 }`}
               />
             </button>
