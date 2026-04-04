@@ -54,7 +54,7 @@ export function VerifyButton({ onVerified }: Props) {
       }
 
       // Use walletAuth to authenticate the user via SIWE
-      const nonce = crypto.randomUUID()
+      const nonce = crypto.randomUUID().replace(/-/g, '')
       const result = await MiniKit.walletAuth({
         nonce,
         statement: 'Verify your identity for Human-Backed Trading Copilot',

@@ -11,21 +11,26 @@ export async function POST(): Promise<NextResponse> {
     return E.forbidden('Demo mode is not enabled');
   }
 
-  const user = await db.user.upsert({
-    where: { nullifierHash: DEMO_NULLIFIER },
-    create: {
-      nullifierHash: DEMO_NULLIFIER,
-      walletAddress: DEMO_WALLET,
-      verificationLevel: 'orb',
-      isVerified: true,
-    },
-    update: { isVerified: true },
-  });
+  try {
+    const user = await db.user.upsert({
+      where: { nullifierHash: DEMO_NULLIFIER },
+      create: {
+        nullifierHash: DEMO_NULLIFIER,
+        walletAddress: DEMO_WALLET,
+        verificationLevel: 'orb',
+        isVerified: true,
+      },
+      update: { isVerified: true },
+    });
 
-  const token = await signSession({ userId: user.id });
+    const token = await signSession({ userId: user.id });
 
-  return NextResponse.json(
-    { userId: user.id, verified: true, walletAddress: user.walletAddress },
-    { headers: { 'Set-Cookie': sessionCookie(token) } }
-  );
+    return NextResponse.json(
+      { userId: user.id, verified: true, walletAddress: user.walletAddress },
+      { headers: { 'Set-Cookie': sessionCookie(token) } }
+    );
+  } catch (err) {
+    console.error('Demo login failed:', err);
+    return E.internal();
+  }
 }

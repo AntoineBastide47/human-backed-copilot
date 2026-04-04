@@ -12,14 +12,16 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
-const { executeSwap } = await import('../services/uniswap');
-const { PrismaClient } = await import('@prisma/client');
+import { executeSwap } from '../services/uniswap';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const WETH = '0x4200000000000000000000000000000000000006';
 const USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
 const AMOUNT = '100000000000000000'; // 0.1 WETH — small to conserve funds
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 async function main(): Promise<void> {
   await prisma.$connect();
