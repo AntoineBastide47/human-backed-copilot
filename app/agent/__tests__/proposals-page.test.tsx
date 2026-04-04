@@ -1,29 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
-import type { ReactNode } from 'react'
-import type { Proposal } from '@/types'
 
-type LinkProps = {
-  href: string
-  children: ReactNode
-  className?: string
-}
-
-type ProposalWithTxHash = Proposal & { txHash?: string }
-type SwrState = {
-  data: ProposalWithTxHash[] | undefined
-  error: Error | undefined
-  isLoading: boolean
-}
-
-// ── Stable mocks ────────────────────────────────────────────────────────────
-
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('next/link', () => ({
-  default: ({ href, children, className }: LinkProps) => <a href={href} className={className}>{children}</a>,
+  default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
+    <a href={href} className={className}>{children}</a>
+  ),
 }))
+
 vi.mock('@/lib/constants', () => ({
   TOKEN_MAP: {
     '0x4200000000000000000000000000000000000006': { symbol: 'WETH', color: '#3b82f6' },
@@ -32,125 +17,153 @@ vi.mock('@/lib/constants', () => ({
   txExplorerUrl: (hash: string) => `https://worldscan.org/tx/${hash}`,
 }))
 
-const mockApiFetch = vi.fn()
-vi.mock('@/lib/mock-data', () => ({
-  USE_MOCK: false,
-  MOCK_PROPOSALS: [],
-  MOCK_AGENT: { id: 'mock-agent-1' },
-  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+const mockFetchJson = vi.fn()
+const mockIsApiError = vi.fn(() => false)
+vi.mock('@/components/sync4-client', async () => {
+  const actual = await vi.importActual<typeof import('@/components/sync4-client')>(
+    '@/components/sync4-client'
+  )
+
+  return {
+    ...actual,
+    fetchJson: (...args: [string, RequestInit?]) => mockFetchJson(...args),
+    isApiError: (...args: [unknown]) => mockIsApiError(...args),
+  }
+})
+
+const mockSetAgentId = vi.fn()
+vi.mock('@/components/use-agent-id', () => ({
+  useAgentId: () => ({
+    agentId: 'agent-123',
+    hydrated: true,
+    isResolving: false,
+    setAgentId: mockSetAgentId,
+  }),
 }))
 
-// ── SWR mock — writable so each test can control the response ────────────────
-const swrData: SwrState = { data: undefined, error: undefined, isLoading: false }
+const swrState = { data: undefined as unknown, error: undefined as Error | undefined, isLoading: false }
+const mockMutate = vi.fn()
+const mockCacheMutate = vi.fn()
 vi.mock('swr', () => ({
-  default: () => ({ ...swrData, mutate: vi.fn() }),
+  default: () => ({ ...swrState, mutate: mockMutate }),
+  useSWRConfig: () => ({ mutate: mockCacheMutate }),
 }))
 
 const WETH = '0x4200000000000000000000000000000000000006'
 const USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1'
 
-const pending = {
-  id: 'prop-1', agentId: 'a1', strategyId: 's1',
-  type: 'dca_buy' as const, tokenIn: WETH, tokenOut: USDC,
-  amount: '500000000000000000', estimatedOutput: '925000000',
-  reasoning: 'DCA buy', status: 'pending' as const,
+const pendingProposal = {
+  id: 'prop-1',
+  agentId: 'agent-123',
+  strategyId: 'strategy-1',
+  type: 'dca_buy' as const,
+  tokenIn: WETH,
+  tokenOut: USDC,
+  amount: '500000000000000000',
+  estimatedOutput: '925000000',
+  reasoning: 'DCA buy',
+  status: 'pending' as const,
   createdAt: new Date().toISOString(),
 }
-
-// ── localStorage stub ────────────────────────────────────────────────────────
-beforeEach(() => {
-  swrData.data      = undefined
-  swrData.error     = undefined
-  swrData.isLoading = false
-  mockApiFetch.mockReset()
-  vi.stubGlobal('localStorage', {
-    getItem: (key: string) => key === 'hbc_agentId' ? 'agent-123' : null,
-    setItem: vi.fn(),
-  })
-})
 
 async function renderPage() {
   const { default: ProposalsPage } = await import('@/app/agent/proposals/page')
   return render(<ProposalsPage />)
 }
 
+beforeEach(() => {
+  swrState.data = undefined
+  swrState.error = undefined
+  swrState.isLoading = false
+  mockFetchJson.mockReset()
+  mockIsApiError.mockReset()
+  mockIsApiError.mockReturnValue(false)
+  mockMutate.mockReset()
+  mockCacheMutate.mockReset()
+  mockSetAgentId.mockReset()
+})
+
 describe('ProposalsPage', () => {
-  it('shows loading skeleton when isLoading', async () => {
-    swrData.isLoading = true
+  it('shows loading skeleton when pending proposals are loading', async () => {
+    swrState.isLoading = true
     await renderPage()
-    // Skeletons are animate-pulse divs — check for absence of empty-state text
     expect(screen.queryByText('No pending proposals.')).toBeNull()
   })
 
-  it('shows empty state when proposals array is empty', async () => {
-    swrData.data = []
+  it('shows empty state when there are no pending proposals', async () => {
+    swrState.data = []
     await renderPage()
     expect(screen.getByText('No pending proposals.')).toBeTruthy()
+    expect(screen.getByText(/Live polling is on/)).toBeTruthy()
   })
 
-  it('renders proposal cards from SWR data', async () => {
-    swrData.data = [pending]
+  it('renders live proposals from SWR data', async () => {
+    swrState.data = [pendingProposal]
     await renderPage()
     expect(screen.getByText('DCA buy')).toBeTruthy()
-  })
-
-  it('shows pending count badge in heading when there are pending proposals', async () => {
-    swrData.data = [pending]
-    await renderPage()
-    // The badge shows the count
     expect(screen.getByText('1')).toBeTruthy()
   })
 
-  it('shows error state when SWR returns an error', async () => {
-    swrData.error = new Error('Network error')
+  it('shows error state when the live proposals query fails', async () => {
+    swrState.error = new Error('Network error')
     await renderPage()
     expect(screen.getByText('Could not load proposals.')).toBeTruthy()
     expect(screen.getByText('Retry')).toBeTruthy()
   })
 
-  it('calls approve endpoint on approve click', async () => {
-    swrData.data = [pending]
-    mockApiFetch.mockResolvedValue({ success: true, txHash: '0xdeadbeef' })
+  it('approves a live proposal and updates the proposal cache immediately', async () => {
+    swrState.data = [pendingProposal]
+    mockFetchJson.mockResolvedValue({ success: true, txHash: '0xdeadbeef12345678' })
+
     await renderPage()
-    const approveBtn = screen.getByTestId('approve-button')
-    fireEvent.click(approveBtn)
+    fireEvent.click(screen.getByTestId('approve-button'))
+
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/approve'),
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        '/api/agents/agent-123/approve',
         expect.objectContaining({ method: 'POST' })
       )
     })
+
+    expect(mockMutate).toHaveBeenCalledWith([], { revalidate: false })
+    expect(mockCacheMutate).toHaveBeenCalledWith(
+      '/api/executions?agentId=agent-123',
+      expect.any(Function),
+      { revalidate: false }
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Executed on-chain/)).toBeTruthy()
+    })
   })
 
-  it('calls reject endpoint on reject click', async () => {
-    swrData.data = [pending]
-    mockApiFetch.mockResolvedValue({ success: true })
+  it('rejects a live proposal and removes it from the pending list', async () => {
+    swrState.data = [pendingProposal]
+    mockFetchJson.mockResolvedValue({ success: true })
+
     await renderPage()
-    const rejectBtn = screen.getByTestId('reject-button')
-    fireEvent.click(rejectBtn)
+    fireEvent.click(screen.getByTestId('reject-button'))
+
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/reject'),
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        '/api/agents/agent-123/reject',
         expect.objectContaining({ method: 'POST' })
       )
     })
-  })
 
-  it('shows success toast after approval', async () => {
-    swrData.data = [pending]
-    mockApiFetch.mockResolvedValue({ success: true, txHash: '0xdeadbeef12345' })
-    await renderPage()
-    fireEvent.click(screen.getByTestId('approve-button'))
+    expect(mockMutate).toHaveBeenCalledWith([], { revalidate: false })
     await waitFor(() => {
-      expect(screen.getByText(/Executed!/)).toBeTruthy()
+      expect(screen.getByText('Proposal rejected')).toBeTruthy()
     })
   })
 
-  it('shows error toast when approval fails', async () => {
-    swrData.data = [pending]
-    mockApiFetch.mockRejectedValue(new Error('Swap failed'))
+  it('shows backend errors when approval fails', async () => {
+    swrState.data = [pendingProposal]
+    mockFetchJson.mockRejectedValue(new Error('Swap failed'))
+
     await renderPage()
     fireEvent.click(screen.getByTestId('approve-button'))
+
     await waitFor(() => {
       expect(screen.getByText('Swap failed')).toBeTruthy()
     })
