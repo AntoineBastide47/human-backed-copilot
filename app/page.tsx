@@ -15,66 +15,103 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-5 pt-12 pb-8">
-      <div className="flex-1 flex flex-col justify-center gap-6">
-        <div>
-          <span className="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full mb-4">
-            World ID + Uniswap + ENS
-          </span>
-          <h1 className="text-3xl font-bold leading-tight text-stone-900">
-            Human-Backed<br />Trading Copilot
-          </h1>
-          <p className="mt-3 text-stone-500 text-base leading-relaxed">
-            Register an AI trading agent. It proposes swaps — you approve them.
-            Bots blocked. Verified humans only.
-          </p>
-        </div>
+    <div className="px-6 space-y-8 mt-4">
+      {/* Hero */}
+      <section className="space-y-2">
+        <p className="text-[10px] font-bold tracking-[0.1em] uppercase text-primary">
+          Security Protocol
+        </p>
+        <h1 className="text-4xl font-extrabold tracking-tight text-on-background leading-tight">
+          Verification Center
+        </h1>
+      </section>
 
-        <ul className="space-y-2 text-sm text-stone-600">
+      {/* World ID card */}
+      <section>
+        <div className="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant/10 shadow-[0_4px_24px_-4px_rgba(38,52,61,0.06)]">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-secondary text-2xl">fingerprint</span>
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold text-on-surface">Proof of Personhood</h2>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                This app uses <span className="font-bold text-secondary">World ID</span> to verify you are a unique human — no personal data collected.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 pt-6 border-t border-outline-variant/10 grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wider text-outline font-bold">Privacy</p>
+              <p className="text-sm font-semibold text-on-surface">Zero-Knowledge</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wider text-outline font-bold">Security</p>
+              <p className="text-sm font-semibold text-on-surface">Orb-Verified</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section>
+        <ul className="space-y-3">
           {[
-            'Verified by World ID — one unique human per agent',
-            'DCA & rebalance strategies on World Chain',
-            'Human approval required for every trade',
-            'ENS subname for your agent (*.copilot.eth)',
-          ].map(f => (
-            <li key={f} className="flex items-start gap-2">
-              <span className="mt-0.5 w-4 h-4 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center">
-                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                  <path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </span>
-              {f}
+            { icon: 'verified_user', text: 'One unique human per agent — bots blocked' },
+            { icon: 'swap_horiz', text: 'DCA & rebalance strategies on World Chain' },
+            { icon: 'how_to_vote', text: 'Human approval required for every trade' },
+            { icon: 'badge', text: 'ENS subname for your agent (*.copilot.eth)' },
+          ].map(({ icon, text }) => (
+            <li key={text} className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-secondary text-base">{icon}</span>
+              </div>
+              <p className="text-sm text-on-surface-variant">{text}</p>
             </li>
           ))}
         </ul>
-      </div>
+      </section>
 
-      <div className="mt-8 space-y-3">
+      {/* CTAs */}
+      <section className="space-y-4">
         {userId ? (
           <>
-            <p className="text-center text-sm text-green-600 font-medium">
-              Verified human detected. Continue Sync #4 live.
-            </p>
+            <div className="flex items-center gap-2 px-4 py-3 bg-surface-container rounded-xl">
+              <span className="material-symbols-outlined text-tertiary text-lg">check_circle</span>
+              <p className="text-sm font-semibold text-on-surface">Identity verified — you&apos;re in.</p>
+            </div>
             <Link
               href="/agent/setup"
-              className="block w-full py-4 rounded-2xl font-bold text-lg text-center bg-black text-white active:scale-95 transition-all"
+              className="w-full py-5 bg-[#162238] text-white rounded-xl font-bold flex items-center justify-center gap-3 active:scale-[0.98] transition-transform shadow-lg block text-center"
             >
+              <span className="material-symbols-outlined">smart_toy</span>
               Set Up Your Agent
             </Link>
             <Link
               href="/dashboard"
-              className="block w-full py-4 rounded-2xl font-bold text-lg text-center bg-stone-100 text-stone-700 active:scale-95 transition-all"
+              className="w-full py-4 bg-surface-container-low text-secondary rounded-xl font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform text-sm block text-center"
             >
+              <span className="material-symbols-outlined text-base">analytics</span>
               View Dashboard
             </Link>
           </>
         ) : (
           <VerifyButton onVerified={handleVerified} />
         )}
-        <p className="text-center text-xs text-stone-400">
-          Runs on World Chain (chain ID 480)
-        </p>
-      </div>
+      </section>
+
+      {/* Info grid */}
+      <section className="grid grid-cols-6 gap-4 pb-4">
+        <div className="col-span-4 bg-surface-container-highest/40 p-5 rounded-xl space-y-2">
+          <span className="material-symbols-outlined text-primary">history_edu</span>
+          <h3 className="text-sm font-bold text-on-surface">Audit Trail</h3>
+          <p className="text-xs text-on-surface-variant">Immutable logs of all verification and execution events.</p>
+        </div>
+        <div className="col-span-2 bg-primary text-white p-5 rounded-xl flex flex-col justify-between">
+          <span className="material-symbols-outlined">shield</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest">Active</span>
+        </div>
+      </section>
     </div>
   )
 }

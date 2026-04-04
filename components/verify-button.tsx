@@ -115,31 +115,31 @@ export function VerifyButton({ onVerified }: Props) {
       <button
         onClick={handleVerify}
         disabled={loading || verified}
-        className={`w-full py-4 rounded-2xl font-bold text-lg transition-all active:scale-95 ${
+        className={`w-full py-5 rounded-xl font-bold flex items-center justify-center gap-3 active:scale-[0.98] transition-transform shadow-lg text-sm tracking-wide ${
           verified
-            ? 'bg-green-500 text-white'
+            ? 'bg-tertiary text-on-tertiary'
             : loading
-            ? 'bg-stone-300 text-stone-500 cursor-not-allowed'
-            : 'bg-black text-white'
+            ? 'bg-surface-container text-on-surface-variant cursor-not-allowed'
+            : 'bg-[#162238] text-white shadow-secondary/20'
         }`}
       >
         {buttonLabel}
       </button>
 
       {!inWorldApp && isDemoMode && !verified && (
-        <p className="text-center text-xs text-stone-400">
+        <p className="text-center text-xs text-on-surface-variant/60">
           Demo mode — no World App required
         </p>
       )}
 
       {!inWorldApp && !isDemoMode && !verified && (
-        <p className="text-center text-xs text-stone-400">
+        <p className="text-center text-xs text-on-surface-variant/60">
           Open this link in World App to verify, or enable demo mode for testing.
         </p>
       )}
 
       {error && (
-        <p role="alert" className="mt-2 text-sm text-red-500 text-center">{error}</p>
+        <p role="alert" className="mt-2 text-sm text-error text-center">{error}</p>
       )}
     </div>
   )

@@ -17,20 +17,21 @@ const fetcher = async (url: string) => normalizeProposalList(await fetchJson<unk
 
 function ProposalCardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3 animate-pulse">
-      <div className="flex items-start justify-between">
+    <div className="bg-surface-container-lowest rounded-xl p-6 outline outline-1 outline-outline-variant/10 space-y-4 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-surface-container" />
         <div className="space-y-1.5">
-          <div className="h-5 w-16 bg-stone-200 rounded-full" />
-          <div className="h-3 w-20 bg-stone-100 rounded" />
+          <div className="h-4 w-24 bg-surface-container rounded-full" />
+          <div className="h-3 w-16 bg-surface-container-high rounded" />
         </div>
-        <div className="h-5 w-14 bg-stone-100 rounded-full" />
       </div>
-      <div className="h-5 w-40 bg-stone-200 rounded" />
-      <div className="h-3 w-full bg-stone-100 rounded" />
-      <div className="grid grid-cols-2 gap-2 pt-1">
-        <div className="h-10 bg-stone-100 rounded-xl" />
-        <div className="h-10 bg-stone-200 rounded-xl" />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="h-16 bg-surface-container-low rounded-lg" />
+        <div className="h-16 bg-surface-container-low rounded-lg" />
       </div>
+      <div className="h-20 bg-surface-container-low/50 rounded-lg" />
+      <div className="h-12 bg-surface-container rounded-xl" />
+      <div className="h-12 bg-surface-container-low rounded-xl" />
     </div>
   )
 }
@@ -48,9 +49,7 @@ export default function ProposalsPage() {
   const { data: proposals, error, mutate, isLoading } = useSWR<ProposalRecord[]>(
     proposalsKey,
     fetcher,
-    {
-      refreshInterval: 4000,
-    }
+    { refreshInterval: 4000 }
   )
 
   useEffect(() => {
@@ -66,11 +65,7 @@ export default function ProposalsPage() {
   }
 
   const handleApprove = async (proposalId: string) => {
-    if (!agentId) {
-      addToast('No active agent found.', false)
-      return
-    }
-
+    if (!agentId) { addToast('No active agent found.', false); return }
     setApprovingId(proposalId)
     try {
       const proposal = proposals?.find((item) => item.id === proposalId)
@@ -78,10 +73,8 @@ export default function ProposalsPage() {
         `/api/agents/${agentId}/approve`,
         { method: 'POST', body: JSON.stringify({ proposalId }) }
       )
-
       if (proposal) {
         await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
-
         if (historyKey) {
           await mutateCache(
             historyKey,
@@ -105,7 +98,6 @@ export default function ProposalsPage() {
       } else {
         await mutate()
       }
-
       addToast(
         data.txHash ? `Executed on-chain: ${data.txHash.slice(0, 10)}...` : 'Trade executed.',
         true
@@ -121,18 +113,13 @@ export default function ProposalsPage() {
   }
 
   const handleReject = async (proposalId: string) => {
-    if (!agentId) {
-      addToast('No active agent found.', false)
-      return
-    }
-
+    if (!agentId) { addToast('No active agent found.', false); return }
     setRejectingId(proposalId)
     try {
       await fetchJson(`/api/agents/${agentId}/reject`, {
         method: 'POST',
         body: JSON.stringify({ proposalId }),
       })
-
       await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
       addToast('Proposal rejected', false)
       void mutate()
@@ -148,12 +135,10 @@ export default function ProposalsPage() {
 
   if (!agentId && isResolving) {
     return (
-      <div className="min-h-screen px-5 pt-8 pb-4">
-        <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-bold">Proposals</h1>
-          <p className="text-sm text-stone-500">
-            Recovering your live agent so pending approvals can stream in.
-          </p>
+      <div className="px-6 mt-4">
+        <div className="bg-surface-container-lowest rounded-xl p-6 outline outline-1 outline-outline-variant/10 space-y-3">
+          <h1 className="text-2xl font-extrabold text-on-surface">Execution Queue</h1>
+          <p className="text-sm text-on-surface-variant">Recovering your live agent so pending approvals can stream in.</p>
         </div>
       </div>
     )
@@ -161,16 +146,16 @@ export default function ProposalsPage() {
 
   if (!agentId && hydrated) {
     return (
-      <div className="min-h-screen px-5 pt-8 pb-4">
-        <div className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 text-center shadow-sm">
-          <h1 className="text-xl font-bold">No Agent Found</h1>
-          <p className="text-sm text-stone-500">
+      <div className="px-6 mt-4">
+        <div className="bg-surface-container-lowest rounded-xl p-6 outline outline-1 outline-outline-variant/10 text-center space-y-4">
+          <div className="w-14 h-14 rounded-full bg-surface-container flex items-center justify-center mx-auto">
+            <span className="material-symbols-outlined text-on-surface-variant text-2xl">description</span>
+          </div>
+          <h1 className="text-xl font-bold text-on-surface">No Agent Found</h1>
+          <p className="text-sm text-on-surface-variant">
             Register an agent and create a strategy to start receiving live proposals.
           </p>
-          <Link
-            href="/agent/setup"
-            className="block rounded-2xl bg-black py-3 text-sm font-semibold text-white"
-          >
+          <Link href="/agent/setup" className="block bg-[#162238] text-white rounded-xl py-3 text-sm font-bold">
             Register Agent
           </Link>
         </div>
@@ -179,40 +164,50 @@ export default function ProposalsPage() {
   }
 
   return (
-    <div className="min-h-screen px-5 pt-8 pb-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-xl font-bold">Proposals</h1>
+    <div className="px-6 mt-4 space-y-6">
+      {/* Header */}
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface leading-tight">
+            Execution Queue
+          </h1>
+          <p className="text-on-surface-variant font-medium mt-1">Ready for confirmation</p>
+        </div>
         {pendingCount > 0 && (
-          <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
+          <div className="bg-secondary text-white font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             {pendingCount}
-          </span>
+          </div>
         )}
       </div>
 
       {error ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-          <p className="text-red-500 text-sm">Could not load proposals.</p>
+          <p className="text-error text-sm">Could not load proposals.</p>
           <button
             onClick={() => mutate()}
-            className="px-4 py-2 bg-black text-white rounded-xl text-sm font-semibold"
+            className="px-4 py-2 bg-[#162238] text-white rounded-xl text-sm font-semibold"
           >
             Retry
           </button>
         </div>
       ) : isLoading && !proposals ? (
-        <div className="space-y-3">
+        <div className="space-y-6">
           <ProposalCardSkeleton />
           <ProposalCardSkeleton />
         </div>
       ) : !proposals || proposals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-          <p className="text-stone-400 text-sm">No pending proposals.</p>
-          <p className="text-stone-300 text-xs">
+          <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center">
+            <span className="material-symbols-outlined text-on-surface-variant text-3xl">inbox</span>
+          </div>
+          <p className="text-on-surface-variant text-sm font-medium">No pending proposals.</p>
+          <p className="text-on-surface-variant/60 text-xs max-w-xs">
             Live polling is on. New proposals appear here automatically without refreshing.
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {proposals.map(p => (
             <ProposalCard
               key={p.id}
@@ -226,12 +221,13 @@ export default function ProposalsPage() {
         </div>
       )}
 
-      <div className="fixed bottom-16 left-4 right-4 space-y-2 pointer-events-none z-50">
+      {/* Toasts */}
+      <div className="fixed bottom-28 left-4 right-4 space-y-2 pointer-events-none z-50">
         {toasts.map(t => (
           <div
             key={t.id}
             className={`w-full py-3 px-4 rounded-xl text-sm font-medium text-white shadow-lg ${
-              t.ok ? 'bg-green-500' : 'bg-stone-700'
+              t.ok ? 'bg-tertiary' : 'bg-secondary-dim'
             }`}
           >
             {t.msg}
