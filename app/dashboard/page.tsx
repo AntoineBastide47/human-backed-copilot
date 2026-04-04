@@ -49,7 +49,9 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 export default function DashboardPage() {
   const { agentId, hydrated, isResolving, setAgentId } = useAgentId()
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
   const {
     data: agent,
@@ -131,6 +133,29 @@ export default function DashboardPage() {
     paused:      'bg-surface-container-high text-on-surface-variant',
   }
 
+  function openDeleteConfirm() {
+    if (!agentId || !agent) return
+    setDeleteError(null)
+    setIsDeleteConfirmOpen(true)
+  }
+
+  async function handleDeleteAgent() {
+    if (!agentId || !agent) return
+
+    setDeleteError(null)
+    setIsDeleting(true)
+
+    try {
+      await fetchJson(`/api/agents/${agentId}`, { method: 'DELETE' })
+      setIsDeleteConfirmOpen(false)
+      setAgentId(null)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete agent')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="px-4 space-y-6 mt-4">
 
@@ -188,40 +213,71 @@ export default function DashboardPage() {
                 </span>
               </div>
               <button
-                onClick={() => setConfirmDelete(true)}
+                onClick={openDeleteConfirm}
                 className="w-9 h-9 flex items-center justify-center rounded-lg text-on-surface-variant active:text-error active:bg-error/10 transition-colors"
                 aria-label="Delete agent"
               >
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>
-            {confirmDelete && (
-              <div className="mt-3 pt-3 border-t border-outline-variant/10 flex items-center justify-between gap-3">
-                <p className="text-sm text-on-surface-variant">Delete this agent?</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setConfirmDelete(false)}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-container text-on-surface-variant"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      fetchJson(`/api/agents/${agentId}`, { method: 'DELETE' }).catch(() => {})
-                      setAgentId(null)
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-error text-white"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
         )}
       </section>
+
+      {isDeleteConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/45 px-4 pb-6 pt-16"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-agent-title"
+        >
+          <div className="w-full rounded-[28px] bg-surface-container-lowest p-5 shadow-[0_18px_60px_-18px_rgba(0,0,0,0.55)] border border-outline-variant/10 space-y-4">
+            <div className="mx-auto h-1.5 w-12 rounded-full bg-outline-variant/40" />
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-error">
+                Destructive Action
+              </p>
+              <h3 id="delete-agent-title" className="text-lg font-extrabold text-on-surface">
+                Delete agent?
+              </h3>
+              <p className="text-sm leading-relaxed text-on-surface-variant">
+                This permanently removes {agentDisplay}, along with its strategies, pending proposals, and execution history.
+              </p>
+            </div>
+
+            {deleteError && (
+              <p role="alert" className="rounded-xl bg-error-container/20 px-3 py-2 text-sm font-medium text-error">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isDeleting) return
+                  setDeleteError(null)
+                  setIsDeleteConfirmOpen(false)
+                }}
+                disabled={isDeleting}
+                className="rounded-xl border border-outline-variant/20 px-4 py-3 text-sm font-bold text-on-surface transition-opacity disabled:opacity-60"
+              >
+                Keep Agent
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAgent}
+                disabled={isDeleting}
+                className="rounded-xl bg-error px-4 py-3 text-sm font-bold text-on-error transition-opacity disabled:opacity-60"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats row */}
       {agent && (

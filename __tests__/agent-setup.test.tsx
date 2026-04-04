@@ -1,7 +1,25 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import React from 'react'
+
+const mockPush = vi.fn()
+const mockGetLocalStorageValue = vi.fn(() => null)
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}))
+
+vi.mock('@/components/sync4-client', () => ({
+  fetchJson: vi.fn(),
+}))
+
+vi.mock('@/lib/client-storage', () => ({
+  getLocalStorageValue: mockGetLocalStorageValue,
+  setLocalStorageValue: vi.fn(),
+}))
 
 type SetupStatus = 'idle' | 'submitting' | 'active' | 'error'
 
@@ -36,6 +54,12 @@ function StepTracker({ setupStatus }: { setupStatus: SetupStatus }) {
 }
 
 describe('StepTracker', () => {
+  beforeEach(() => {
+    mockPush.mockReset()
+    mockGetLocalStorageValue.mockReset()
+    mockGetLocalStorageValue.mockReturnValue(null)
+  })
+
   it('renders the CLI-first labels', () => {
     render(<StepTracker setupStatus="idle" />)
     expect(screen.getByText('Register with AgentKit CLI')).toBeTruthy()
@@ -62,5 +86,31 @@ describe('StepTracker', () => {
     render(<StepTracker setupStatus="active" />)
     const indicators = document.querySelectorAll('[data-done]')
     indicators.forEach(el => expect(el.getAttribute('data-done')).toBe('true'))
+  })
+})
+
+describe('AgentSetupPage', () => {
+  beforeEach(() => {
+    mockPush.mockReset()
+    mockGetLocalStorageValue.mockReset()
+    mockGetLocalStorageValue.mockImplementation((key: string) => {
+      if (key === 'hbc_walletAddress') {
+        return '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18'
+      }
+      return null
+    })
+  })
+
+  it('locks the wallet field to the verified World wallet address', async () => {
+    const { default: AgentSetupPage } = await import('@/app/agent/setup/page')
+
+    render(<AgentSetupPage />)
+
+    const input = screen.getByLabelText('World Wallet Address') as HTMLInputElement
+    expect(input.value).toBe('0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18')
+    expect(input.readOnly).toBe(true)
+    expect(
+      screen.getByText('Locked to the wallet you verified with World App. Fund this wallet with ETH for gas on World Chain.'),
+    ).toBeTruthy()
   })
 })

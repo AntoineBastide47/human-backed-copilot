@@ -2,6 +2,8 @@
 
 ## Project
 
+**IMPORTANT** - THE PROJECt ONLY RUNS ON THE WORLD APP, NO WHERE ELSE
+
 **Human-Backed Trading Copilot** — a mini app where verified humans register AI trading agents that propose DCA/rebalance actions, require human approval, and execute swaps on-chain. Bots get blocked, human-backed agents get through.
 
 **Bounty targets:** World Agent Kit ($8k) + World ID 4.0 ($8k) + MiniKit 2.0 ($4k) + Uniswap API ($10k) + ENS AI Agents ($5k) + ENS Creative ($5k)

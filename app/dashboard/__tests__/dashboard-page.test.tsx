@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import type { Agent, AgentStrategy } from '@/types'
 
@@ -19,6 +19,7 @@ vi.mock('@/lib/constants', () => ({
 }))
 
 const mockSetAgentId = vi.fn()
+const mockFetchJson = vi.fn()
 vi.mock('@/components/use-agent-id', () => ({
   useAgentId: () => ({
     agentId: 'agent-123',
@@ -26,6 +27,12 @@ vi.mock('@/components/use-agent-id', () => ({
     isResolving: false,
     setAgentId: mockSetAgentId,
   }),
+}))
+
+vi.mock('@/components/sync4-client', () => ({
+  fetchJson: (...args: unknown[]) => mockFetchJson(...args),
+  isApiError: (error: unknown) => error instanceof Error && 'status' in (error as Record<string, unknown>),
+  normalizeProposalList: (value: unknown) => value,
 }))
 
 const makeAgent = (overrides: Partial<Agent> = {}): Agent => ({
@@ -104,6 +111,7 @@ beforeEach(() => {
   proposalsState.isLoading = false
   proposalsState.mutate = vi.fn()
   mockSetAgentId.mockReset()
+  mockFetchJson.mockReset()
 })
 
 describe('DashboardPage', () => {
@@ -228,5 +236,22 @@ describe('DashboardPage', () => {
     strategiesState.data = []
     await renderPage()
     expect(screen.getByText('0x123456...')).toBeTruthy()
+  })
+
+  it('deletes the current agent from the dashboard', async () => {
+    agentState.data = makeAgent()
+    strategiesState.data = []
+    mockFetchJson.mockResolvedValue({ deleted: true })
+
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText('Delete agent?')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Forever' }))
+
+    await waitFor(() => {
+      expect(mockFetchJson).toHaveBeenCalledWith('/api/agents/agent-123', { method: 'DELETE' })
+      expect(mockSetAgentId).toHaveBeenCalledWith(null)
+    })
   })
 })

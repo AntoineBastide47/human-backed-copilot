@@ -181,12 +181,19 @@ describe('Sync #4 — full backend gate', () => {
 
   // Step 2 ── Create agent once AgentBook registration is confirmed
   it('step 2: POST /api/agents returns agent with status=active', async () => {
-    const res = await postAgent(postReq('http://localhost/api/agents', { walletAddress: WALLET }));
+    const res = await postAgent(postReq('http://localhost/api/agents', {}));
     expect(res.status).toBe(201);
     const body = await json<{ id: string; status: string; spendLimits: object }>(res);
     expect(body.id).toBe('a1');
     expect(body.status).toBe('active');
     expect(body.spendLimits).toBeDefined();
+    expect(mockAgentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          walletAddress: WALLET,
+        }),
+      })
+    );
   });
 
   // Step 3 ── Create DCA strategy → 201, chainId=480
@@ -257,7 +264,7 @@ describe('Sync #4 — full backend gate', () => {
     mockGetSession.mockRejectedValue(new AuthError('Unauthorized', 401));
 
     const results = await Promise.all([
-      postAgent(postReq('http://localhost/api/agents', { walletAddress: WALLET })),
+      postAgent(postReq('http://localhost/api/agents', {})),
       postStrategy(
         postReq('http://localhost/api/agents/a1/strategies', { name: 'x', tokenIn: TOKEN_IN, tokenOut: TOKEN_OUT, amountPerInterval: '1', interval: 'daily' }),
         { params: Promise.resolve({ id: 'a1' }) }
