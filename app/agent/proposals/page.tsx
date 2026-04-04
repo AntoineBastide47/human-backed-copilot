@@ -1,11 +1,19 @@
 'use client'
-import { useState, useEffect } from 'react'
-import useSWR from 'swr'
-import { USE_MOCK, MOCK_PROPOSALS, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
-import type { Proposal } from '@/types'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
+import {
+  fetchJson,
+  isApiError,
+  normalizeProposalList,
+  prependExecutionToPage,
+  removeProposalFromList,
+  type ProposalRecord,
+} from '@/components/sync4-client'
+import { useAgentId } from '@/components/use-agent-id'
 import { ProposalCard } from '@/components/proposal-card'
 
-const fetcher = (url: string) => apiFetch<Proposal[]>(url)
+const fetcher = async (url: string) => normalizeProposalList(await fetchJson<unknown>(url))
 
 function ProposalCardSkeleton() {
   return (
@@ -28,51 +36,84 @@ function ProposalCardSkeleton() {
 }
 
 export default function ProposalsPage() {
-  const [agentId, setAgentId]       = useState<string | null>(null)
+  const { agentId, hydrated, isResolving, setAgentId } = useAgentId()
+  const { mutate: mutateCache } = useSWRConfig()
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
-  const [toasts, setToasts]         = useState<{ id: string; msg: string; ok: boolean }[]>([])
+  const [toasts, setToasts] = useState<{ id: string; msg: string; ok: boolean }[]>([])
 
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
+  const proposalsKey = agentId ? `/api/agents/${agentId}/proposals?status=pending` : null
+  const historyKey = agentId ? `/api/executions?agentId=${agentId}` : null
 
-  const { data: proposals, error, mutate, isLoading } = useSWR<(Proposal & { txHash?: string })[]>(
-    agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
+  const { data: proposals, error, mutate, isLoading } = useSWR<ProposalRecord[]>(
+    proposalsKey,
     fetcher,
     {
-      fallbackData: USE_MOCK ? (MOCK_PROPOSALS as any[]) : undefined,
-      refreshInterval: 5000,
+      refreshInterval: 4000,
     }
   )
 
+  useEffect(() => {
+    if (isApiError(error) && error.status === 404) {
+      setAgentId(null)
+    }
+  }, [error, setAgentId])
+
   const addToast = (msg: string, ok: boolean) => {
-    const id = crypto.randomUUID()
+    const id = globalThis.crypto?.randomUUID?.() ?? `toast-${Date.now()}-${Math.random()}`
     setToasts(t => [...t, { id, msg, ok }])
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000)
   }
 
   const handleApprove = async (proposalId: string) => {
+    if (!agentId) {
+      addToast('No active agent found.', false)
+      return
+    }
+
     setApprovingId(proposalId)
     try {
-      const id = agentId ?? (USE_MOCK ? MOCK_AGENT.id : '')
-      if (USE_MOCK) {
-        await new Promise(r => setTimeout(r, 1200))
-        addToast('Swap confirmed (mock)', true)
-        mutate()
-        return
-      }
-      const data = await apiFetch<{ success: boolean; txHash?: string; error?: string }>(
-        `/api/agents/${id}/approve`,
+      const proposal = proposals?.find((item) => item.id === proposalId)
+      const data = await fetchJson<{ success: boolean; txHash?: string }>(
+        `/api/agents/${agentId}/approve`,
         { method: 'POST', body: JSON.stringify({ proposalId }) }
       )
-      if (data.success) {
-        addToast(`Executed! Tx: ${data.txHash?.slice(0, 10)}...`, true)
+
+      if (proposal) {
+        await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
+
+        if (historyKey) {
+          await mutateCache(
+            historyKey,
+            (current: unknown) =>
+              prependExecutionToPage(current, {
+                id: `optimistic-${proposalId}`,
+                agentId,
+                strategyId: proposal.strategyId,
+                proposalId,
+                txHash: data.txHash ?? '',
+                amountIn: proposal.amount,
+                amountOut: proposal.estimatedOutput,
+                status: 'confirmed',
+                executedAt: new Date().toISOString(),
+                tokenIn: proposal.tokenIn,
+                tokenOut: proposal.tokenOut,
+              }),
+            { revalidate: false }
+          )
+        }
       } else {
-        addToast(data.error ?? 'Approval failed', false)
+        await mutate()
       }
-      mutate()
+
+      addToast(
+        data.txHash ? `Executed on-chain: ${data.txHash.slice(0, 10)}...` : 'Trade executed.',
+        true
+      )
+      void mutate()
+      if (historyKey) void mutateCache(historyKey)
     } catch (err) {
+      void mutate()
       addToast(err instanceof Error ? err.message : 'Error approving', false)
     } finally {
       setApprovingId(null)
@@ -80,29 +121,62 @@ export default function ProposalsPage() {
   }
 
   const handleReject = async (proposalId: string) => {
+    if (!agentId) {
+      addToast('No active agent found.', false)
+      return
+    }
+
     setRejectingId(proposalId)
     try {
-      const id = agentId ?? (USE_MOCK ? MOCK_AGENT.id : '')
-      if (USE_MOCK) {
-        await new Promise(r => setTimeout(r, 400))
-        addToast('Proposal rejected', false)
-        mutate()
-        return
-      }
-      await apiFetch(`/api/agents/${id}/reject`, {
+      await fetchJson(`/api/agents/${agentId}/reject`, {
         method: 'POST',
         body: JSON.stringify({ proposalId }),
       })
+
+      await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
       addToast('Proposal rejected', false)
-      mutate()
+      void mutate()
     } catch (err) {
+      void mutate()
       addToast(err instanceof Error ? err.message : 'Error rejecting', false)
     } finally {
       setRejectingId(null)
     }
   }
 
-  const pendingCount = proposals?.filter(p => p.status === 'pending').length ?? 0
+  const pendingCount = proposals?.length ?? 0
+
+  if (!agentId && isResolving) {
+    return (
+      <div className="min-h-screen px-5 pt-8 pb-4">
+        <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+          <h1 className="text-xl font-bold">Proposals</h1>
+          <p className="text-sm text-stone-500">
+            Recovering your live agent so pending approvals can stream in.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!agentId && hydrated) {
+    return (
+      <div className="min-h-screen px-5 pt-8 pb-4">
+        <div className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 text-center shadow-sm">
+          <h1 className="text-xl font-bold">No Agent Found</h1>
+          <p className="text-sm text-stone-500">
+            Register an agent and create a strategy to start receiving live proposals.
+          </p>
+          <Link
+            href="/agent/setup"
+            className="block rounded-2xl bg-black py-3 text-sm font-semibold text-white"
+          >
+            Register Agent
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen px-5 pt-8 pb-4 space-y-4">
@@ -133,7 +207,9 @@ export default function ProposalsPage() {
       ) : !proposals || proposals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
           <p className="text-stone-400 text-sm">No pending proposals.</p>
-          <p className="text-stone-300 text-xs">Your agent is watching markets — check back soon.</p>
+          <p className="text-stone-300 text-xs">
+            Live polling is on. New proposals appear here automatically without refreshing.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

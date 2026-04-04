@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { USE_MOCK, MOCK_AGENT, apiFetch } from '@/lib/mock-data'
+import Link from 'next/link'
+import { fetchJson, persistAgentId, readStoredValue, STORAGE_KEYS } from '@/components/sync4-client'
 import type { Agent } from '@/types'
 
 type SetupStatus = 'idle' | 'submitting' | 'registering' | 'active' | 'timeout' | 'error'
@@ -64,15 +65,17 @@ export default function AgentSetupPage() {
 
     const poll = async () => {
       try {
-        const agent = await apiFetch<Agent>(`/api/agents/${agentId}`)
+        const agent = await fetchJson<Agent>(`/api/agents/${agentId}`)
         if (agent.status === 'active') {
           setSetupStatus('active')
           return
         }
+
         if (++attempts >= POLL_MAX_ATTEMPTS) {
           setSetupStatus('timeout')
           return
         }
+
         pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
       } catch {
         setSetupStatus('error')
@@ -97,30 +100,19 @@ export default function AgentSetupPage() {
     setSetupStatus('submitting')
 
     try {
-      if (USE_MOCK) {
-        await new Promise(r => setTimeout(r, 600))
-        localStorage.setItem('hbc_agentId', MOCK_AGENT.id)
-        setAgentId(MOCK_AGENT.id)
-        setSetupStatus('registering')
-        // Simulate on-chain delay
-        await new Promise(r => setTimeout(r, 1200))
-        setSetupStatus('active')
-        return
-      }
-
-      const userId = localStorage.getItem('hbc_userId')
+      const userId = readStoredValue(STORAGE_KEYS.userId)
       if (!userId) {
         setError('Not verified. Go back and verify with World ID first.')
         setSetupStatus('error')
         return
       }
 
-      const agent = await apiFetch<Agent>('/api/agents', {
+      const agent = await fetchJson<Agent>('/api/agents', {
         method: 'POST',
         body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
       })
 
-      localStorage.setItem('hbc_agentId', agent.id)
+      persistAgentId(agent.id)
       setAgentId(agent.id)
       setSetupStatus('registering')
     } catch (err) {
@@ -139,7 +131,7 @@ export default function AgentSetupPage() {
         Your agent wallet will execute trades on your behalf on World Chain.
       </p>
 
-      {isProcessing || isDone ? (
+      {setupStatus !== 'idle' ? (
         <div className="space-y-6">
           <StepTracker setupStatus={setupStatus} />
           {isDone && (
@@ -148,9 +140,32 @@ export default function AgentSetupPage() {
             </p>
           )}
           {setupStatus === 'timeout' && (
-            <p className="text-sm text-yellow-600 text-center">
-              Taking longer than expected. Check the dashboard in a moment.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-yellow-600 text-center">
+                Registration is still propagating. You can keep waiting here or jump to the dashboard.
+              </p>
+              <Link
+                href="/dashboard"
+                className="block w-full rounded-2xl bg-stone-900 py-3 text-center text-sm font-semibold text-white"
+              >
+                Open Dashboard
+              </Link>
+            </div>
+          )}
+          {setupStatus === 'error' && error && (
+            <div className="space-y-3">
+              <p role="alert" className="text-center text-sm text-red-500">{error}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSetupStatus('idle')
+                  setError(null)
+                }}
+                className="w-full rounded-2xl border border-stone-200 py-3 text-sm font-semibold text-stone-700"
+              >
+                Try Again
+              </button>
+            </div>
           )}
         </div>
       ) : (
@@ -198,9 +213,10 @@ export default function AgentSetupPage() {
 
           <button
             type="submit"
+            disabled={isProcessing}
             className="w-full py-4 rounded-2xl font-bold text-lg bg-black text-white active:scale-95 transition-all"
           >
-            Register Agent
+            {setupStatus === 'submitting' ? 'Registering...' : 'Register Agent'}
           </button>
         </form>
       )}

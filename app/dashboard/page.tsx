@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { USE_MOCK, MOCK_AGENT, MOCK_STRATEGIES, apiFetch } from '@/lib/mock-data'
+import { fetchJson, isApiError } from '@/components/sync4-client'
+import { useAgentId } from '@/components/use-agent-id'
 import type { Agent, AgentStrategy } from '@/types'
 
-const fetcher = (url: string) => apiFetch<any>(url)
+const fetcher = <T,>(url: string) => fetchJson<T>(url)
 
 function StatusBadge({ status }: { status: Agent['status'] }) {
   const styles = {
@@ -78,11 +79,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 export default function DashboardPage() {
-  const [agentId, setAgentId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
+  const { agentId, hydrated, isResolving, setAgentId } = useAgentId()
 
   const {
     data: agent,
@@ -91,9 +88,8 @@ export default function DashboardPage() {
     isLoading: agentLoading,
   } = useSWR<Agent>(
     agentId ? `/api/agents/${agentId}` : null,
-    fetcher,
+    fetcher<Agent>,
     {
-      fallbackData: USE_MOCK ? MOCK_AGENT : undefined,
       refreshInterval: (data) =>
         !data || data.status === 'registering' ? 3000 : 30000,
     }
@@ -106,14 +102,30 @@ export default function DashboardPage() {
     isLoading: strategiesLoading,
   } = useSWR<AgentStrategy[]>(
     agentId ? `/api/agents/${agentId}/strategies` : null,
-    fetcher,
+    fetcher<AgentStrategy[]>,
     {
-      fallbackData: USE_MOCK ? MOCK_STRATEGIES : undefined,
       refreshInterval: 30000,
     }
   )
 
-  if (!agentId && !USE_MOCK) {
+  useEffect(() => {
+    if (isApiError(agentError) && agentError.status === 404) {
+      setAgentId(null)
+    }
+  }, [agentError, setAgentId])
+
+  if (!agentId && isResolving) {
+    return (
+      <div className="min-h-screen px-5 pt-8 pb-4">
+        <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+          <h1 className="text-xl font-bold">Dashboard</h1>
+          <p className="text-sm text-stone-500">Loading your latest live agent session.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!agentId && hydrated) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-5 gap-4 text-center">
         <p className="text-stone-400 text-sm">No agent registered yet.</p>
@@ -124,8 +136,6 @@ export default function DashboardPage() {
     )
   }
 
-  const displayAgent = agent ?? MOCK_AGENT
-
   return (
     <div className="min-h-screen px-5 pt-8 pb-4 space-y-4">
       <h1 className="text-xl font-bold">Dashboard</h1>
@@ -134,26 +144,28 @@ export default function DashboardPage() {
         <ErrorState message="Could not load agent data." onRetry={() => mutateAgent()} />
       ) : agentLoading && !agent ? (
         <AgentCardSkeleton />
-      ) : (
+      ) : agent ? (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-semibold text-base">
-                {displayAgent.ensName ?? displayAgent.walletAddress.slice(0, 8) + '...'}
+                {agent.ensName ?? agent.walletAddress.slice(0, 8) + '...'}
               </p>
               <p className="text-xs text-stone-400 font-mono">
-                {displayAgent.walletAddress.slice(0, 10)}...{displayAgent.walletAddress.slice(-6)}
+                {agent.walletAddress.slice(0, 10)}...{agent.walletAddress.slice(-6)}
               </p>
             </div>
-            <StatusBadge status={displayAgent.status} />
+            <StatusBadge status={agent.status} />
           </div>
 
           <div className="grid grid-cols-3 gap-2 pt-1">
-            <Stat label="Trades"    value={displayAgent.usageCount} />
-            <Stat label="Free left" value={displayAgent.freeTrialRemaining} />
-            <Stat label="Daily cap" value={`$${(parseInt(displayAgent.spendLimits.dailyCap) / 1e6).toFixed(0)}`} />
+            <Stat label="Trades"    value={agent.usageCount} />
+            <Stat label="Free left" value={agent.freeTrialRemaining} />
+            <Stat label="Daily cap" value={`$${(parseInt(agent.spendLimits.dailyCap) / 1e6).toFixed(0)}`} />
           </div>
         </div>
+      ) : (
+        <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
       )}
 
       <div>

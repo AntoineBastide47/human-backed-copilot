@@ -1,10 +1,10 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import useSWR from 'swr'
-import { USE_MOCK, MOCK_PROPOSALS, apiFetch } from '@/lib/mock-data'
-import type { Proposal } from '@/types'
+import { fetchJson, isApiError, normalizeProposalList } from '@/components/sync4-client'
+import { useAgentId } from '@/components/use-agent-id'
 
 // Simple inline SVG tab icons — no external deps
 function HomeIcon({ active }: { active: boolean }) {
@@ -48,26 +48,27 @@ const TABS = [
   { label: 'History',   href: '/agent/history',   Icon: HistoryIcon },
 ] as const
 
-const fetcher = (url: string) => apiFetch<Proposal[]>(url)
+const fetcher = async (url: string) => normalizeProposalList(await fetchJson<unknown>(url))
 
 export function NavTabs() {
   const pathname = usePathname()
-  const [agentId, setAgentId] = useState<string | null>(null)
+  const { agentId, setAgentId } = useAgentId()
 
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
-
-  const { data: proposals } = useSWR<Proposal[]>(
-    !USE_MOCK && agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
+  const { data: proposals, error } = useSWR(
+    agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
     fetcher,
     {
-      fallbackData: USE_MOCK ? (MOCK_PROPOSALS as unknown as Proposal[]) : undefined,
-      refreshInterval: 10000,
+      refreshInterval: 5000,
     }
   )
 
-  const pendingCount = proposals?.filter(p => p.status === 'pending').length ?? 0
+  useEffect(() => {
+    if (isApiError(error) && error.status === 404) {
+      setAgentId(null)
+    }
+  }, [error, setAgentId])
+
+  const pendingCount = proposals?.length ?? 0
 
   return (
     <nav

@@ -1,7 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { USE_MOCK, MOCK_AGENT, apiFetch, tokenDecimals, tokenSymbol } from '@/lib/mock-data'
+import Link from 'next/link'
+import { fetchJson, toTokenAmount, tokenSymbol } from '@/components/sync4-client'
+import { useAgentId } from '@/components/use-agent-id'
 import { WORLD_CHAIN_ID } from '@/lib/constants'
 
 const TOKEN_PAIRS = [
@@ -15,17 +17,13 @@ type Interval = 'hourly' | 'daily' | 'weekly'
 
 export default function StrategiesPage() {
   const router = useRouter()
-  const [agentId, setAgentId] = useState<string | null>(null)
+  const { agentId, hydrated, isResolving } = useAgentId()
   const [pairIdx, setPairIdx] = useState(0)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
   const [autoExecute, setAutoExecute] = useState(false)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAgentId(localStorage.getItem('hbc_agentId'))
-  }, [])
 
   const pair = TOKEN_PAIRS[pairIdx]
   const tokenInSymbol = tokenSymbol(pair.tokenIn)
@@ -36,24 +34,15 @@ export default function StrategiesPage() {
     setStatus('loading')
 
     try {
-      const id = agentId ?? (USE_MOCK ? MOCK_AGENT.id : null)
-      if (!id) {
+      if (!agentId) {
         setError('No agent found. Register an agent first.')
         setStatus('error')
         return
       }
 
-      if (USE_MOCK) {
-        await new Promise(r => setTimeout(r, 700))
-        setStatus('done')
-        setTimeout(() => router.push('/dashboard'), 1200)
-        return
-      }
+      const amountRaw = toTokenAmount(amount, pair.tokenIn)
 
-      const decimals = tokenDecimals(pair.tokenIn)
-      const amountRaw = BigInt(Math.round(parseFloat(amount) * 10 ** decimals)).toString()
-
-      await apiFetch(`/api/agents/${id}/strategies`, {
+      await fetchJson(`/api/agents/${agentId}/strategies`, {
         method: 'POST',
         body: JSON.stringify({
           name: `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`,
@@ -67,11 +56,43 @@ export default function StrategiesPage() {
       })
 
       setStatus('done')
-      setTimeout(() => router.push('/dashboard'), 1200)
+      setTimeout(() => router.push('/agent/proposals'), 1200)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
       setStatus('error')
     }
+  }
+
+  if (!agentId && isResolving) {
+    return (
+      <div className="min-h-screen px-5 pt-8 pb-4">
+        <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+          <h1 className="text-xl font-bold">Add Strategy</h1>
+          <p className="text-sm text-stone-500">
+            Loading your registered agent so the live Sync #4 flow can continue.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!agentId && hydrated) {
+    return (
+      <div className="min-h-screen px-5 pt-8 pb-4">
+        <div className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 text-center shadow-sm">
+          <h1 className="text-xl font-bold">No Agent Found</h1>
+          <p className="text-sm text-stone-500">
+            Finish registration first, then come back here to create the live strategy.
+          </p>
+          <Link
+            href="/agent/setup"
+            className="block rounded-2xl bg-black py-3 text-sm font-semibold text-white"
+          >
+            Register Agent
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -173,7 +194,11 @@ export default function StrategiesPage() {
               : 'bg-black text-white'
           }`}
         >
-          {status === 'done' ? 'Strategy saved!' : status === 'loading' ? 'Saving...' : 'Save Strategy'}
+          {status === 'done'
+            ? 'Strategy live. Opening proposals...'
+            : status === 'loading'
+            ? 'Saving...'
+            : 'Save Strategy'}
         </button>
       </form>
     </div>

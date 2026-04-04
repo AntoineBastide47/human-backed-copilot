@@ -1,20 +1,26 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { VerifyButton } from '@/components/verify-button'
+import { readStoredValue, STORAGE_KEYS, writeStoredValue } from '@/components/sync4-client'
+
+function subscribeToStorage() {
+  return () => {}
+}
 
 export default function HomePage() {
-  const [userId, setUserId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const stored = localStorage.getItem('hbc_userId')
-    if (stored) setUserId(stored)
-  }, [])
+  const storedUserId = useSyncExternalStore(
+    subscribeToStorage,
+    () => readStoredValue(STORAGE_KEYS.userId),
+    () => null
+  )
+  const [userIdOverride, setUserIdOverride] = useState<string | null | undefined>(undefined)
+  const userId = userIdOverride ?? storedUserId
 
   const handleVerified = (uid: string, walletAddress: string) => {
-    localStorage.setItem('hbc_userId', uid)
-    localStorage.setItem('hbc_walletAddress', walletAddress)
-    setUserId(uid)
+    writeStoredValue(STORAGE_KEYS.userId, uid)
+    writeStoredValue(STORAGE_KEYS.walletAddress, walletAddress)
+    setUserIdOverride(uid)
   }
 
   return (
@@ -56,7 +62,7 @@ export default function HomePage() {
         {userId ? (
           <>
             <p className="text-center text-sm text-green-600 font-medium">
-              Verified — ready to set up your agent
+              Verified human detected. Continue Sync #4 live.
             </p>
             <Link
               href="/agent/setup"

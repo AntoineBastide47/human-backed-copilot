@@ -1,11 +1,8 @@
 'use client'
 import { formatDistanceToNow } from 'date-fns'
-import { TOKEN_MAP, txExplorerUrl } from '@/lib/constants'
+import { txExplorerUrl } from '@/lib/constants'
+import { formatTokenAmount, tokenSymbol } from '@/components/sync4-client'
 import type { Proposal } from '@/types'
-
-function tokenLabel(address: string) {
-  return TOKEN_MAP[address]?.symbol ?? address.slice(0, 6) + '...'
-}
 
 export interface ProposalCardProps {
   proposal: Proposal & { txHash?: string }
@@ -26,10 +23,8 @@ export function ProposalCard({
   const isRejecting = rejectingId === proposal.id
   const busy = isApproving || isRejecting
 
-  const inDecimals  = proposal.tokenIn  === '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' ? 6 : 18
-  const outDecimals = proposal.tokenOut === '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1' ? 6 : 18
-  const amountIn  = (Number(BigInt(proposal.amount))          / 10 ** inDecimals).toFixed(4)
-  const amountOut = (Number(BigInt(proposal.estimatedOutput)) / 10 ** outDecimals).toFixed(2)
+  const amountIn = formatTokenAmount(proposal.amount, proposal.tokenIn, 4)
+  const amountOut = formatTokenAmount(proposal.estimatedOutput, proposal.tokenOut, 2)
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
@@ -61,9 +56,9 @@ export function ProposalCard({
       </div>
 
       <div className="flex items-center gap-2 text-base font-semibold">
-        <span data-testid="amount-in">{amountIn} {tokenLabel(proposal.tokenIn)}</span>
+        <span data-testid="amount-in">{amountIn} {tokenSymbol(proposal.tokenIn)}</span>
         <span className="text-stone-300">→</span>
-        <span data-testid="amount-out" className="text-stone-500">~{amountOut} {tokenLabel(proposal.tokenOut)}</span>
+        <span data-testid="amount-out" className="text-stone-500">~{amountOut} {tokenSymbol(proposal.tokenOut)}</span>
       </div>
 
       <p className="text-xs text-stone-500 italic">{proposal.reasoning}</p>
