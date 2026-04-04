@@ -8,6 +8,7 @@ import {
 
 export default function HomePage() {
   const userId = useLocalStorageValue('hbc_userId')
+  const agentId = useLocalStorageValue('hbc_agentId')
 
   const handleVerified = (uid: string, walletAddress: string) => {
     setLocalStorageValue('hbc_userId', uid)
@@ -25,7 +26,6 @@ export default function HomePage() {
           Verification Center
         </h1>
       </section>
-
 
       {/* Features */}
       <section>
@@ -54,20 +54,15 @@ export default function HomePage() {
               <span className="material-symbols-outlined text-tertiary text-lg">check_circle</span>
               <p className="text-sm font-semibold text-on-surface">Identity verified — you&apos;re in.</p>
             </div>
-            <Link
-              href="/agent/setup"
-              className="w-full py-5 bg-[#162238] text-white rounded-xl font-bold flex items-center justify-center gap-3 active:scale-[0.98] transition-transform shadow-lg block text-center"
-            >
-              <span className="material-symbols-outlined">smart_toy</span>
-              Set Up Your Agent
-            </Link>
-            <Link
-              href="/dashboard"
-              className="w-full py-4 bg-surface-container-low text-secondary rounded-xl font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform text-sm block text-center"
-            >
-              <span className="material-symbols-outlined text-base">analytics</span>
-              View Dashboard
-            </Link>
+            {!agentId && (
+              <Link
+                href="/agent/setup"
+                className="w-full py-5 bg-[#162238] text-white rounded-xl font-bold flex items-center justify-center gap-3 active:scale-[0.98] transition-transform shadow-lg block text-center"
+              >
+                <span className="material-symbols-outlined">smart_toy</span>
+                Set Up Your Agent
+              </Link>
+            )}
           </>
         ) : (
           <VerifyButton onVerified={handleVerified} />
