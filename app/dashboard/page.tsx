@@ -14,78 +14,33 @@ const fetcher = <T,>(url: string) => fetchJson<T>(url)
 const proposalsFetcher = async (url: string) =>
   normalizeProposalList(await fetchJson<unknown>(url))
 
-function StatusBadge({ status }: { status: Agent['status'] }) {
-  const styles = {
-    active:      'bg-green-100 text-green-700',
-    registering: 'bg-yellow-100 text-yellow-700',
-    paused:      'bg-stone-100 text-stone-500',
-  }
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${styles[status]}`}>
-      {status}
-    </span>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-stone-50 rounded-lg p-2 text-center">
-      <p className="text-base font-bold">{value}</p>
-      <p className="text-[10px] text-stone-400 mt-0.5">{label}</p>
-    </div>
-  )
-}
-
-function FreeStat({ freeLeft }: { freeLeft: number }) {
-  const colour =
-    freeLeft === 0 ? 'text-red-600' : freeLeft === 1 ? 'text-yellow-600' : undefined
-  return (
-    <div className="bg-stone-50 rounded-lg p-2 text-center">
-      <p className={`text-base font-bold ${colour ?? ''}`}>{freeLeft}</p>
-      <p className="text-[10px] text-stone-400 mt-0.5">Free left</p>
-    </div>
-  )
-}
-
 function AgentCardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3 animate-pulse">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1.5">
-          <div className="h-4 w-32 bg-stone-200 rounded" />
-          <div className="h-3 w-24 bg-stone-100 rounded" />
-        </div>
-        <div className="h-5 w-16 bg-stone-100 rounded-full" />
-      </div>
-      <div className="grid grid-cols-3 gap-2 pt-1">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="bg-stone-50 rounded-lg p-2 space-y-1">
-            <div className="h-4 w-8 bg-stone-200 rounded mx-auto" />
-            <div className="h-2.5 w-12 bg-stone-100 rounded mx-auto" />
-          </div>
-        ))}
-      </div>
+    <div className="bg-secondary rounded-xl p-6 animate-pulse">
+      <div className="h-3 w-24 bg-white/20 rounded mb-3" />
+      <div className="h-8 w-40 bg-white/20 rounded mb-4" />
+      <div className="h-3 w-32 bg-white/10 rounded" />
     </div>
   )
 }
 
 function StrategySkeleton() {
   return (
-    <div className="bg-white rounded-xl p-3 shadow-sm border border-stone-100 flex items-center justify-between animate-pulse">
-      <div className="space-y-1.5">
-        <div className="h-3.5 w-36 bg-stone-200 rounded" />
-        <div className="h-2.5 w-24 bg-stone-100 rounded" />
+    <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/5 animate-pulse flex items-center gap-4">
+      <div className="w-12 h-12 rounded-lg bg-surface-container" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 w-36 bg-surface-container rounded" />
+        <div className="h-3 w-24 bg-surface-container-high rounded" />
       </div>
-      <div className="h-5 w-12 bg-stone-100 rounded-full" />
     </div>
   )
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="bg-red-50 rounded-xl p-4 text-center space-y-2 border border-red-100">
-      <p className="text-sm text-red-600">{message}</p>
-      <button onClick={onRetry} className="text-xs font-semibold text-red-700 underline">
+    <div className="bg-surface-container-lowest rounded-xl p-5 border border-error/10 space-y-2">
+      <p className="text-sm text-error">{message}</p>
+      <button onClick={onRetry} className="text-xs font-semibold text-error underline">
         Retry
       </button>
     </div>
@@ -136,10 +91,10 @@ export default function DashboardPage() {
 
   if (!agentId && isResolving) {
     return (
-      <div className="min-h-screen px-5 pt-8 pb-4">
-        <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-bold">Dashboard</h1>
-          <p className="text-sm text-stone-500">Loading your latest live agent session.</p>
+      <div className="px-4 mt-4">
+        <div className="bg-secondary rounded-xl p-6 animate-pulse">
+          <div className="h-3 w-24 bg-white/20 rounded mb-3" />
+          <div className="h-8 w-40 bg-white/20 rounded mb-4" />
         </div>
       </div>
     )
@@ -147,131 +102,205 @@ export default function DashboardPage() {
 
   if (!agentId && hydrated) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-5 gap-4 text-center">
-        <p className="text-stone-400 text-sm">No agent registered yet.</p>
-        <Link href="/agent/setup" className="px-6 py-3 bg-black text-white rounded-2xl font-bold text-sm">
+      <div className="px-4 mt-4 flex flex-col items-center justify-center gap-4 text-center py-16">
+        <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center">
+          <span className="material-symbols-outlined text-on-surface-variant text-3xl">smart_toy</span>
+        </div>
+        <p className="text-on-surface-variant text-sm">No agent registered yet.</p>
+        <Link href="/agent/setup" className="px-6 py-3 bg-[#162238] text-white rounded-xl font-bold text-sm">
           Set Up Agent
         </Link>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen px-5 pt-8 pb-4 space-y-4">
-      <h1 className="text-xl font-bold">Dashboard</h1>
+  const agentDisplay = agent?.ensName
+    ?? (agent?.walletAddress
+      ? `${agent.walletAddress.slice(0, 8)}...`
+      : '...')
 
+  const dailyCapRaw = agent?.spendLimits?.dailyCap
+  const dailyCapDisplay = dailyCapRaw
+    ? `$${(parseInt(dailyCapRaw) / 1e6).toFixed(0)}`
+    : '—'
+
+  const statusColors: Record<Agent['status'], string> = {
+    active:      'bg-tertiary-container text-on-tertiary-container',
+    registering: 'bg-secondary-container text-on-secondary-container',
+    paused:      'bg-surface-container-high text-on-surface-variant',
+  }
+
+  return (
+    <div className="px-4 space-y-6 mt-4">
+
+      {/* Status banners */}
       {agent?.status === 'registering' && (
         <div
           data-testid="registering-notice"
-          className="rounded-xl bg-yellow-50 border border-yellow-100 px-4 py-3 text-sm text-yellow-800"
+          className="flex items-center gap-3 px-4 py-3 bg-secondary-container rounded-xl border border-secondary-fixed-dim/30"
         >
-          Your agent is registering on-chain. This usually takes under a minute.
+          <span className="material-symbols-outlined text-secondary text-lg">hourglass_top</span>
+          <p className="text-sm text-on-secondary-container">
+            Your agent is registering on-chain. This usually takes under a minute.
+          </p>
         </div>
       )}
 
       {agent?.status === 'paused' && (
         <div
           data-testid="paused-notice"
-          className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700"
+          className="flex items-center gap-3 px-4 py-3 bg-surface-container rounded-xl border border-outline-variant/20"
         >
-          Your agent is paused. No new proposals will be generated until you resume it.
+          <span className="material-symbols-outlined text-on-surface-variant text-lg">pause_circle</span>
+          <p className="text-sm text-on-surface-variant">
+            Your agent is paused. No new proposals will be generated until you resume it.
+          </p>
         </div>
       )}
 
       {agent && agent.freeTrialRemaining === 0 && agent.status === 'active' && (
         <div
           data-testid="trial-exhausted-notice"
-          className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700"
+          className="flex items-center gap-3 px-4 py-3 bg-error-container/20 rounded-xl border border-error/20"
         >
-          Free trial exhausted. Connect a payment method to keep executing trades.
+          <span className="material-symbols-outlined text-error text-lg">credit_card_off</span>
+          <p className="text-sm text-error">
+            Free trial exhausted. Connect a payment method to keep executing trades.
+          </p>
         </div>
       )}
 
-      {agentError ? (
-        <ErrorState message="Could not load agent data." onRetry={() => mutateAgent()} />
-      ) : agentLoading && !agent ? (
-        <AgentCardSkeleton />
-      ) : agent ? (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-base">
-                {agent.ensName ?? `${agent.walletAddress.slice(0, 8)}...`}
-              </p>
-              <p className="text-xs text-stone-400 font-mono">
-                {agent.walletAddress.slice(0, 10)}...{agent.walletAddress.slice(-6)}
-              </p>
+      {/* Portfolio hero card */}
+      <section>
+        {agentError ? (
+          <ErrorState message="Could not load agent data." onRetry={() => mutateAgent()} />
+        ) : agentLoading && !agent ? (
+          <AgentCardSkeleton />
+        ) : agent ? (
+          <div className="bg-secondary rounded-xl p-6 text-on-secondary shadow-[0_8px_32px_-8px_rgba(83,95,120,0.3)] relative overflow-hidden">
+            <div className="absolute -right-12 -top-12 w-48 h-48 bg-white/5 rounded-full blur-3xl" />
+            <p className="text-[10px] font-medium tracking-[0.05em] uppercase text-secondary-fixed/70 mb-1">
+              Active Agent
+            </p>
+            <h2 className="text-2xl font-extrabold tracking-tight leading-none">{agentDisplay}</h2>
+            <div className="mt-4 flex items-center gap-2">
+              <span className={`text-xs font-bold px-2 py-1 rounded-lg ${statusColors[agent.status]}`}>
+                {agent.status}
+              </span>
             </div>
-            <StatusBadge status={agent.status} />
           </div>
+        ) : (
+          <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
+        )}
+      </section>
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            <Stat label="Trades"    value={agent.usageCount} />
-            <FreeStat freeLeft={agent.freeTrialRemaining} />
-            <Stat label="Daily cap" value={`$${(parseInt(agent.spendLimits.dailyCap) / 1e6).toFixed(0)}`} />
+      {/* Stats row */}
+      {agent && (
+        <section className="grid grid-cols-3 gap-3">
+          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
+            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Trades</p>
+            <div className="text-xl font-bold text-on-surface">{agent.usageCount}</div>
+            <div className="w-full bg-surface-container h-1 rounded-full mt-2 overflow-hidden">
+              <div className="bg-primary h-full w-2/3" />
+            </div>
           </div>
-        </div>
-      ) : (
-        <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
+          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
+            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Daily Cap</p>
+            <div className="text-base font-bold text-on-surface">{dailyCapDisplay}</div>
+            <div className="w-full bg-surface-container h-1 rounded-full mt-2 overflow-hidden">
+              <div className="bg-tertiary h-full w-3/4" />
+            </div>
+          </div>
+          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
+            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Free left</p>
+            <div className={`text-xl font-bold ${
+              agent.freeTrialRemaining === 0 ? 'text-error' :
+              agent.freeTrialRemaining === 1 ? 'text-tertiary' :
+              'text-on-surface'
+            }`}>{agent.freeTrialRemaining}</div>
+          </div>
+        </section>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-sm text-stone-500 uppercase tracking-wide">Strategies</h2>
-          <Link href="/agent/strategies" className="text-xs text-black font-medium">+ Add</Link>
+      {/* Active Strategies */}
+      <section className="space-y-4">
+        <div className="flex justify-between items-end px-1">
+          <h3 className="font-bold text-on-surface">Active Strategies</h3>
+          <Link href="/agent/strategies" className="text-primary text-xs font-bold uppercase tracking-widest">
+            + Add
+          </Link>
         </div>
 
         {strategiesError ? (
           <ErrorState message="Could not load strategies." onRetry={() => mutateStrategies()} />
         ) : strategiesLoading && !strategies ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <StrategySkeleton />
             <StrategySkeleton />
           </div>
         ) : strategies && strategies.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {strategies.map(s => (
-              <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm border border-stone-100 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{s.name}</p>
-                  <p className="text-xs text-stone-400">{s.interval} · auto-execute: {s.autoExecute ? 'on' : 'off'}</p>
+              <div
+                key={s.id}
+                className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/5 shadow-sm flex items-center justify-between"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center">
+                    <span className="material-symbols-outlined text-secondary">rocket_launch</span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-on-surface text-sm">{s.name}</h4>
+                    <p className="text-xs text-on-surface-variant font-medium">
+                      {s.interval} · auto-execute: {s.autoExecute ? 'on' : 'off'}
+                    </p>
+                  </div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  s.status === 'active' ? 'bg-tertiary-container text-on-tertiary-container' : 'bg-surface-container text-on-surface-variant'
+                }`}>
                   {s.status}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <div className="bg-white rounded-xl p-4 text-center text-stone-400 text-sm border border-stone-100">
-            No strategies yet —{' '}
-            <Link href="/agent/strategies" className="text-black font-medium underline">
-              add one
-            </Link>{' '}
-            to get started.
+          <div className="bg-surface-container-lowest rounded-xl p-5 text-center border border-outline-variant/10">
+            <p className="text-sm text-on-surface-variant">
+              No strategies yet —{' '}
+              <Link href="/agent/strategies" className="text-secondary font-semibold underline">
+                add one
+              </Link>{' '}
+              to get started.
+            </p>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-2 pt-2">
+      {/* Quick actions */}
+      <section className="grid grid-cols-2 gap-3">
         <Link
           href="/agent/proposals"
-          className="relative bg-black text-white rounded-xl p-3 text-center text-sm font-semibold"
+          className="relative bg-[#162238] text-white rounded-xl p-4 text-center text-sm font-bold shadow-sm"
         >
           View Proposals
           {pendingCount > 0 && (
             <span
               data-testid="proposals-link-badge"
-              className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center"
+              className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-error text-white text-xs font-bold rounded-full flex items-center justify-center"
             >
               {pendingCount > 9 ? '9+' : pendingCount}
             </span>
           )}
         </Link>
-        <Link href="/agent/history" className="bg-stone-100 text-stone-700 rounded-xl p-3 text-center text-sm font-semibold">
+        <Link
+          href="/agent/history"
+          className="bg-surface-container-low text-on-surface-variant rounded-xl p-4 text-center text-sm font-bold"
+        >
           History
         </Link>
-      </div>
+      </section>
+
     </div>
   )
 }

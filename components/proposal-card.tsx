@@ -26,72 +26,105 @@ export function ProposalCard({
   const amountIn = formatTokenAmount(proposal.amount, proposal.tokenIn, 4)
   const amountOut = formatTokenAmount(proposal.estimatedOutput, proposal.tokenOut, 2)
 
+  const typeIcon = proposal.type === 'dca_buy' ? 'show_chart' : 'balance'
+
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
-      <div className="flex items-start justify-between">
-        <div>
-          <span
-            data-testid="proposal-type-badge"
-            className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-              proposal.type === 'dca_buy' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-            }`}
-          >
-            {proposal.type === 'dca_buy' ? 'DCA Buy' : 'Rebalance'}
-          </span>
-          <p className="mt-1 text-xs text-stone-400">
-            {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
-          </p>
-        </div>
+    <div className="bg-surface-container-lowest rounded-xl p-6 shadow-[0_4px_24px_rgba(38,52,61,0.04)] outline outline-1 outline-outline-variant/10 relative overflow-hidden">
+      {/* Status badge */}
+      <div className="absolute top-0 right-0 p-4">
         <span
           data-testid="proposal-status-badge"
-          className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-            proposal.status === 'pending'  ? 'bg-yellow-100 text-yellow-700' :
-            proposal.status === 'executed' ? 'bg-green-100 text-green-700'  :
-            proposal.status === 'rejected' ? 'bg-stone-100 text-stone-500'  :
-            'bg-blue-100 text-blue-700'
+          className={`text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded border ${
+            proposal.status === 'pending'
+              ? 'bg-secondary-container/50 text-secondary border-secondary-fixed-dim/30'
+              : proposal.status === 'executed'
+              ? 'bg-tertiary-container/50 text-on-tertiary-container border-tertiary-fixed-dim/30'
+              : 'bg-surface-container text-on-surface-variant border-outline-variant/20'
           }`}
         >
           {proposal.status}
         </span>
       </div>
 
-      <div className="flex items-center gap-2 text-base font-semibold">
-        <span data-testid="amount-in">{amountIn} {tokenSymbol(proposal.tokenIn)}</span>
-        <span className="text-stone-300">→</span>
-        <span data-testid="amount-out" className="text-stone-500">~{amountOut} {tokenSymbol(proposal.tokenOut)}</span>
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-4 pr-20">
+        <span className="material-symbols-outlined text-secondary">{typeIcon}</span>
+        <div>
+          <span
+            data-testid="proposal-type-badge"
+            className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+              proposal.type === 'dca_buy'
+                ? 'bg-secondary-container text-on-secondary-container'
+                : 'bg-tertiary-container text-on-tertiary-container'
+            }`}
+          >
+            {proposal.type === 'dca_buy' ? 'DCA Buy' : 'Rebalance'}
+          </span>
+          <p className="text-[10px] text-on-surface-variant mt-0.5">
+            {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
+          </p>
+        </div>
       </div>
 
-      <p className="text-xs text-stone-500 italic">{proposal.reasoning}</p>
+      {/* Amounts */}
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="bg-surface-container-low rounded-lg p-3">
+          <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Selling</p>
+          <p data-testid="amount-in" className="text-base font-extrabold text-on-surface">
+            {amountIn} {tokenSymbol(proposal.tokenIn)}
+          </p>
+        </div>
+        <div className="bg-surface-container-low rounded-lg p-3">
+          <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Est. Receive</p>
+          <p data-testid="amount-out" className="text-base font-extrabold text-on-surface">
+            ~{amountOut} {tokenSymbol(proposal.tokenOut)}
+          </p>
+        </div>
+      </div>
 
+      {/* Reasoning */}
+      <div className="mb-5 p-4 bg-surface-container-low/50 rounded-lg border-l-4 border-secondary/30">
+        <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-1 flex items-center gap-1">
+          <span className="material-symbols-outlined text-xs">verified</span>
+          Agent Reasoning
+        </p>
+        <p className="text-sm text-on-surface-variant leading-relaxed italic">
+          {proposal.reasoning}
+        </p>
+      </div>
+
+      {/* Tx link */}
       {proposal.txHash && (
         <a
           data-testid="tx-link"
           href={txExplorerUrl(proposal.txHash)}
           target="_blank"
           rel="noopener noreferrer"
-          className="block text-xs text-blue-600 underline truncate"
+          className="flex items-center gap-1.5 text-xs text-secondary-dim mb-4 font-mono"
         >
-          Tx: {proposal.txHash.slice(0, 20)}...
+          {proposal.txHash.slice(0, 20)}...
+          <span className="material-symbols-outlined text-xs">open_in_new</span>
         </a>
       )}
 
+      {/* Actions */}
       {proposal.status === 'pending' && (
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            data-testid="reject-button"
-            onClick={() => onReject(proposal.id)}
-            disabled={busy}
-            className="py-3 rounded-xl border border-stone-200 text-stone-600 text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
-          >
-            {isRejecting ? 'Rejecting...' : 'Reject'}
-          </button>
+        <div className="flex flex-col gap-3">
           <button
             data-testid="approve-button"
             onClick={() => onApprove(proposal.id)}
             disabled={busy}
-            className="py-3 rounded-xl bg-black text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-50"
+            className="w-full py-4 bg-[#162238] text-white rounded-xl font-bold text-sm tracking-wide shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isApproving ? 'Executing...' : 'Approve'}
+          </button>
+          <button
+            data-testid="reject-button"
+            onClick={() => onReject(proposal.id)}
+            disabled={busy}
+            className="w-full py-4 bg-transparent text-on-surface-variant outline outline-1 outline-outline-variant/30 rounded-xl font-bold text-sm tracking-wide active:scale-95 transition-transform disabled:opacity-50"
+          >
+            {isRejecting ? 'Rejecting...' : 'Reject Proposal'}
           </button>
         </div>
       )}
