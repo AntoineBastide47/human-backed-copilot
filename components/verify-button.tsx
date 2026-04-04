@@ -1,18 +1,10 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MiniKit } from '@worldcoin/minikit-js'
 import { fetchJson } from '@/components/sync4-client'
 
 interface Props {
   onVerified: (userId: string, walletAddress: string) => void
-}
-
-const isInWorldApp = () => {
-  try {
-    return MiniKit.isInstalled()
-  } catch {
-    return false
-  }
 }
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
@@ -21,6 +13,18 @@ export function VerifyButton({ onVerified }: Props) {
   const [loading, setLoading] = useState(false)
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inWorldApp, setInWorldApp] = useState(false)
+
+  useEffect(() => {
+    // Re-check after MiniKit.install() has run in the provider
+    const check = () => {
+      try { setInWorldApp(MiniKit.isInstalled()) } catch { /* not installed */ }
+    }
+    check()
+    // MiniKit.install() in the provider may run after this effect; retry once
+    const timer = setTimeout(check, 100)
+    return () => clearTimeout(timer)
+  }, [])
 
   const handleDemoLogin = async () => {
     setError(null)
@@ -94,7 +98,6 @@ export function VerifyButton({ onVerified }: Props) {
     }
   }
 
-  const inWorldApp = isInWorldApp()
   const handleVerify = inWorldApp ? handleWorldAppVerify : isDemoMode ? handleDemoLogin : handleWorldAppVerify
 
   const buttonLabel = loading
