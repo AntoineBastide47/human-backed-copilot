@@ -79,17 +79,6 @@ monitor → propose → [human approves] → execute
 | POST | `/api/agents/[id]/reject` | Reject proposal |
 | GET | `/api/executions` | List executions (`?agentId=`) |
 
----
-
-## Critical constants
-
-```typescript
-const WORLD_CHAIN_ID   = 480;
-const WORLD_USDC       = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
-const UNISWAP_API_BASE = 'https://trade-api.gateway.uniswap.org';
-const WORLD_ID_ACTION  = 'register-agent'; // must match Developer Portal
-const ENS_PARENT_NAME  = 'copilot.eth';
-```
 
 ---
 
