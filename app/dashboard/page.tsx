@@ -2,11 +2,17 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { fetchJson, isApiError } from '@/components/sync4-client'
+import {
+  fetchJson,
+  isApiError,
+  normalizeProposalList,
+} from '@/components/sync4-client'
 import { useAgentId } from '@/components/use-agent-id'
 import type { Agent, AgentStrategy } from '@/types'
 
 const fetcher = <T,>(url: string) => fetchJson<T>(url)
+const proposalsFetcher = async (url: string) =>
+  normalizeProposalList(await fetchJson<unknown>(url))
 
 function StatusBadge({ status }: { status: Agent['status'] }) {
   const styles = {
@@ -26,6 +32,17 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div className="bg-stone-50 rounded-lg p-2 text-center">
       <p className="text-base font-bold">{value}</p>
       <p className="text-[10px] text-stone-400 mt-0.5">{label}</p>
+    </div>
+  )
+}
+
+function FreeStat({ freeLeft }: { freeLeft: number }) {
+  const colour =
+    freeLeft === 0 ? 'text-red-600' : freeLeft === 1 ? 'text-yellow-600' : undefined
+  return (
+    <div className="bg-stone-50 rounded-lg p-2 text-center">
+      <p className={`text-base font-bold ${colour ?? ''}`}>{freeLeft}</p>
+      <p className="text-[10px] text-stone-400 mt-0.5">Free left</p>
     </div>
   )
 }
@@ -68,10 +85,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="bg-red-50 rounded-xl p-4 text-center space-y-2 border border-red-100">
       <p className="text-sm text-red-600">{message}</p>
-      <button
-        onClick={onRetry}
-        className="text-xs font-semibold text-red-700 underline"
-      >
+      <button onClick={onRetry} className="text-xs font-semibold text-red-700 underline">
         Retry
       </button>
     </div>
@@ -103,10 +117,16 @@ export default function DashboardPage() {
   } = useSWR<AgentStrategy[]>(
     agentId ? `/api/agents/${agentId}/strategies` : null,
     fetcher<AgentStrategy[]>,
-    {
-      refreshInterval: 30000,
-    }
+    { refreshInterval: 30000 }
   )
+
+  const { data: pendingProposals } = useSWR(
+    agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
+    proposalsFetcher,
+    { refreshInterval: 5000 }
+  )
+
+  const pendingCount = pendingProposals?.length ?? 0
 
   useEffect(() => {
     if (isApiError(agentError) && agentError.status === 404) {
@@ -140,6 +160,33 @@ export default function DashboardPage() {
     <div className="min-h-screen px-5 pt-8 pb-4 space-y-4">
       <h1 className="text-xl font-bold">Dashboard</h1>
 
+      {agent?.status === 'registering' && (
+        <div
+          data-testid="registering-notice"
+          className="rounded-xl bg-yellow-50 border border-yellow-100 px-4 py-3 text-sm text-yellow-800"
+        >
+          Your agent is registering on-chain. This usually takes under a minute.
+        </div>
+      )}
+
+      {agent?.status === 'paused' && (
+        <div
+          data-testid="paused-notice"
+          className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700"
+        >
+          Your agent is paused. No new proposals will be generated until you resume it.
+        </div>
+      )}
+
+      {agent && agent.freeTrialRemaining === 0 && agent.status === 'active' && (
+        <div
+          data-testid="trial-exhausted-notice"
+          className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700"
+        >
+          Free trial exhausted. Connect a payment method to keep executing trades.
+        </div>
+      )}
+
       {agentError ? (
         <ErrorState message="Could not load agent data." onRetry={() => mutateAgent()} />
       ) : agentLoading && !agent ? (
@@ -149,7 +196,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="font-semibold text-base">
-                {agent.ensName ?? agent.walletAddress.slice(0, 8) + '...'}
+                {agent.ensName ?? `${agent.walletAddress.slice(0, 8)}...`}
               </p>
               <p className="text-xs text-stone-400 font-mono">
                 {agent.walletAddress.slice(0, 10)}...{agent.walletAddress.slice(-6)}
@@ -160,7 +207,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-3 gap-2 pt-1">
             <Stat label="Trades"    value={agent.usageCount} />
-            <Stat label="Free left" value={agent.freeTrialRemaining} />
+            <FreeStat freeLeft={agent.freeTrialRemaining} />
             <Stat label="Daily cap" value={`$${(parseInt(agent.spendLimits.dailyCap) / 1e6).toFixed(0)}`} />
           </div>
         </div>
@@ -197,14 +244,29 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="bg-white rounded-xl p-4 text-center text-stone-400 text-sm border border-stone-100">
-            No strategies yet — add one to get started.
+            No strategies yet —{' '}
+            <Link href="/agent/strategies" className="text-black font-medium underline">
+              add one
+            </Link>{' '}
+            to get started.
           </div>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-2 pt-2">
-        <Link href="/agent/proposals" className="bg-black text-white rounded-xl p-3 text-center text-sm font-semibold">
+        <Link
+          href="/agent/proposals"
+          className="relative bg-black text-white rounded-xl p-3 text-center text-sm font-semibold"
+        >
           View Proposals
+          {pendingCount > 0 && (
+            <span
+              data-testid="proposals-link-badge"
+              className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center"
+            >
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
+          )}
         </Link>
         <Link href="/agent/history" className="bg-stone-100 text-stone-700 rounded-xl p-3 text-center text-sm font-semibold">
           History

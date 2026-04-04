@@ -187,14 +187,18 @@ export default function HistoryPage() {
                   <p className="text-xs text-stone-400">
                     {formatDistanceToNow(new Date(ex.executedAt), { addSuffix: true })}
                   </p>
-                  <a
-                    href={txExplorerUrl(ex.txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 underline font-mono"
-                  >
-                    {ex.txHash.slice(0, 10)}...
-                  </a>
+                  {ex.txHash ? (
+                    <a
+                      href={txExplorerUrl(ex.txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 underline font-mono"
+                    >
+                      {ex.txHash.slice(0, 10)}...
+                    </a>
+                  ) : (
+                    <span className="text-xs text-stone-300 italic">confirming…</span>
+                  )}
                 </div>
               </div>
             )
