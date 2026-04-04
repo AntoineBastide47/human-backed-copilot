@@ -44,26 +44,26 @@ deploy_infra() {
   fi
 
   # Add Postgres if not present
-  if ! railway variables --json 2>/dev/null | grep -q DATABASE_URL; then
-    log "Adding PostgreSQL plugin..."
-    railway add --plugin postgresql
+  if ! railway variable list --json 2>/dev/null | grep -q DATABASE_URL; then
+    log "Adding PostgreSQL..."
+    railway add --database postgres
     log "Waiting for Postgres to provision..."
     sleep 10
   fi
 
   # Add Redis if not present
-  if ! railway variables --json 2>/dev/null | grep -q REDIS_URL; then
-    log "Adding Redis plugin..."
-    railway add --plugin redis
+  if ! railway variable list --json 2>/dev/null | grep -q REDIS_URL; then
+    log "Adding Redis..."
+    railway add --database redis
     log "Waiting for Redis to provision..."
     sleep 10
   fi
 
-  # Export DATABASE_URL for migration
-  RAILWAY_DB_URL=$(railway variables --json 2>/dev/null | node -e "
+  # Export DATABASE_PUBLIC_URL for local migration (internal URL only works inside Railway)
+  RAILWAY_DB_URL=$(railway variable list --json 2>/dev/null | node -e "
     const d=require('fs').readFileSync('/dev/stdin','utf8');
     const v=JSON.parse(d);
-    console.log(v.DATABASE_URL||'');
+    console.log(v.DATABASE_PUBLIC_URL||v.DATABASE_URL||'');
   " 2>/dev/null || echo "")
 
   if [ -n "$RAILWAY_DB_URL" ]; then
@@ -82,8 +82,16 @@ deploy_migrate() {
   log "Running Prisma migration on production DB..."
 
   if [ -z "${DATABASE_URL:-}" ]; then
-    # Try loading from .env.local
-    if [ -f .env.local ]; then
+    # Try Railway public URL first (internal URL only works inside Railway)
+    DATABASE_URL=$(railway variable list --json 2>/dev/null | node -e "
+      const d=require('fs').readFileSync('/dev/stdin','utf8');
+      const v=JSON.parse(d);
+      console.log(v.DATABASE_PUBLIC_URL||'');
+    " 2>/dev/null || echo "")
+    export DATABASE_URL
+
+    # Fall back to .env.local
+    if [ -z "${DATABASE_URL:-}" ] && [ -f .env.local ]; then
       DATABASE_URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2-)
       export DATABASE_URL
     fi
@@ -148,15 +156,15 @@ deploy_worker() {
       key="${line%%=*}"
       value="${line#*=}"
       [ -z "$value" ] && continue
-      railway variables --set "$key=$value" 2>/dev/null || true
+      railway variable set "$key=$value" 2>/dev/null || true
     done < .env.local
   fi
 
   # Set the start command for the worker
-  railway variables --set "RAILWAY_START_COMMAND=npx tsx scripts/agent-worker.ts"
+  railway variable set "RAILWAY_START_COMMAND=npx tsx scripts/agent-worker.ts"
 
   # Also set DEMO_MODE for live demo
-  railway variables --set "DEMO_MODE=true"
+  railway variable set "DEMO_MODE=true"
 
   railway up --detach
 
