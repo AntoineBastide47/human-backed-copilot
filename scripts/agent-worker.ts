@@ -5,6 +5,7 @@
  * Usage: npx tsx scripts/agent-worker.ts
  */
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { startAgentLoop, stopAgentLoop, isLoopActive } from '../services/agent-runtime';
 
 // Validate required env vars before importing anything else
@@ -16,7 +17,8 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 const POLL_INTERVAL_MS = 30_000;
 const trackedAgents = new Set<string>();
 
