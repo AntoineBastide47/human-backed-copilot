@@ -24,6 +24,7 @@
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "@worldcoin/agentkit": "^0.1.6",
+    "@worldcoin/idkit": "^4.0.11",
     "@worldcoin/minikit-js": "^2.0.2",
     "bullmq": "^5.73.0",
     "date-fns": "^4.1.0",

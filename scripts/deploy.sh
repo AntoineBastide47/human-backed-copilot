@@ -145,33 +145,8 @@ deploy_web() {
 # ── 4. Deploy agent worker to Railway ────────────────────────────────
 
 deploy_worker() {
-  log "Deploying agent worker to Railway..."
-  check_cli railway
-
-  # Create worker service if it doesn't exist
-  railway add --service agent-worker 2>/dev/null || true
-
-  # Set env vars on Railway from .env.local
-  if [ -f .env.local ]; then
-    log "Pushing env vars to Railway..."
-    while IFS= read -r line; do
-      [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-      key="${line%%=*}"
-      value="${line#*=}"
-      [ -z "$value" ] && continue
-      railway variable set --service agent-worker "$key=$value" 2>/dev/null || true
-    done < .env.local
-  fi
-
-  # Set the start command for the worker
-  railway variable set --service agent-worker "RAILWAY_START_COMMAND=npx tsx scripts/agent-worker.ts"
-
-  # Also set DEMO_MODE for live demo
-  railway variable set --service agent-worker "DEMO_MODE=true"
-
-  railway up --service agent-worker --detach
-
-  log "Worker deployed. Check railway dashboard for logs."
+  log "Skipping — agent-worker service is configured manually in Railway dashboard."
+  log "To redeploy: link with 'railway service link agent-worker' then 'railway up --detach'."
 }
 
 # ── 5. Seed demo data ────────────────────────────────────────────────

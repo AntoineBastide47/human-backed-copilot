@@ -50,12 +50,43 @@ function extractPayload(result: unknown): VerificationPayload | null {
   return null
 }
 
+const isInWorldApp = () => {
+  try {
+    return MiniKit.isInstalled()
+  } catch {
+    return false
+  }
+}
+
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+
 export function VerifyButton({ onVerified }: Props) {
   const [loading, setLoading] = useState(false)
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleVerify = async () => {
+  const handleDemoLogin = async () => {
+    setError(null)
+    setLoading(true)
+    try {
+      const data = await fetchJson<{
+        verified: boolean
+        userId: string
+        walletAddress: string
+      }>('/api/demo-login', { method: 'POST' })
+
+      if (data.verified) {
+        setVerified(true)
+        onVerified(data.userId, data.walletAddress)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMiniKitVerify = async () => {
     setError(null)
     setLoading(true)
 
@@ -72,7 +103,7 @@ export function VerifyButton({ onVerified }: Props) {
       }
 
       const result = await verifyCommand({
-        action: WORLD_ID_ACTION, // 'register-agent' — must match Developer Portal
+        action: WORLD_ID_ACTION,
         verification_level: 'orb',
       })
 
@@ -114,8 +145,23 @@ export function VerifyButton({ onVerified }: Props) {
     }
   }
 
+  const inWorldApp = isInWorldApp()
+
+  // Determine which handler to use
+  const handleVerify = inWorldApp ? handleMiniKitVerify : isDemoMode ? handleDemoLogin : handleMiniKitVerify
+
+  const buttonLabel = loading
+    ? 'Verifying...'
+    : verified
+    ? 'Verified Human'
+    : inWorldApp
+    ? 'Verify with World ID'
+    : isDemoMode
+    ? 'Continue as Demo User'
+    : 'Verify with World ID'
+
   return (
-    <div className="w-full">
+    <div className="w-full space-y-3">
       <button
         onClick={handleVerify}
         disabled={loading || verified}
@@ -127,8 +173,23 @@ export function VerifyButton({ onVerified }: Props) {
             : 'bg-black text-white'
         }`}
       >
-        {loading ? 'Verifying...' : verified ? 'Verified Human' : 'Verify with World ID'}
+        {buttonLabel}
       </button>
+
+      {/* Show demo option as secondary when not in World App and demo is enabled */}
+      {!inWorldApp && isDemoMode && !verified && (
+        <p className="text-center text-xs text-stone-400">
+          Demo mode — no World App required
+        </p>
+      )}
+
+      {/* If not in World App and not demo mode, show helpful message */}
+      {!inWorldApp && !isDemoMode && !verified && (
+        <p className="text-center text-xs text-stone-400">
+          Open this link in World App to verify, or enable demo mode for testing.
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="mt-2 text-sm text-red-500 text-center">{error}</p>
       )}
