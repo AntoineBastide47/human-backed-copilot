@@ -22,7 +22,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/db', () => ({
   db: {
     $transaction: vi.fn(),
-    agent: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    agent: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     user: { findUnique: vi.fn() },
     agentStrategy: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
     proposal: { findMany: vi.fn(), deleteMany: vi.fn() },
@@ -37,6 +37,11 @@ vi.mock('@/services/agentkit', () => ({
 vi.mock('@/services/agent-runtime', () => ({
   startAgentLoop: vi.fn().mockResolvedValue(undefined),
   stopAgentLoop: vi.fn().mockResolvedValue(undefined),
+  runAgentCycleOnce: vi.fn().mockResolvedValue(undefined),
+  syncAgentProposalsOnce: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/services/uniswap', () => ({
+  getQuote: vi.fn().mockResolvedValue({ quote: { quote: '900000000' } }),
 }));
 vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
@@ -45,11 +50,13 @@ vi.mock('@/lib/constants', () => ({
 
 import { GET as getAgents, POST as postAgent } from '@/app/api/agents/route';
 import { GET as getAgent, PATCH as patchAgent, DELETE as deleteAgent } from '@/app/api/agents/[id]/route';
-import { GET as getStrategies, POST as postStrategy } from '@/app/api/agents/[id]/strategies/route';
+import { GET as getStrategies, POST as postStrategy, DELETE as deleteStrategies } from '@/app/api/agents/[id]/strategies/route';
+import { DELETE as cleanupAgents } from '@/app/api/agents/cleanup/route';
 import { GET as getProposals } from '@/app/api/agents/[id]/proposals/route';
 import { db } from '@/lib/db';
 import { getSessionUserId, AuthError } from '@/lib/auth';
-import { stopAgentLoop } from '@/services/agent-runtime';
+import { runAgentCycleOnce, stopAgentLoop, syncAgentProposalsOnce } from '@/services/agent-runtime';
+import { getQuote } from '@/services/uniswap';
 
 const mockGetSession = vi.mocked(getSessionUserId);
 const mockTransaction = vi.mocked(db.$transaction);
@@ -58,6 +65,7 @@ const mockAgentFindUnique = vi.mocked(db.agent.findUnique);
 const mockAgentCreate = vi.mocked(db.agent.create);
 const mockAgentUpdate = vi.mocked(db.agent.update);
 const mockAgentDelete = vi.mocked(db.agent.delete);
+const mockAgentDeleteMany = vi.mocked(db.agent.deleteMany);
 const mockUserFindUnique = vi.mocked(db.user.findUnique);
 const mockStrategyFindMany = vi.mocked(db.agentStrategy.findMany);
 const mockStrategyCreate = vi.mocked(db.agentStrategy.create);
@@ -66,6 +74,9 @@ const mockProposalFindMany = vi.mocked(db.proposal.findMany);
 const mockProposalDeleteMany = vi.mocked(db.proposal.deleteMany);
 const mockExecutionDeleteMany = vi.mocked(db.execution.deleteMany);
 const mockStopAgentLoop = vi.mocked(stopAgentLoop);
+const mockRunAgentCycleOnce = vi.mocked(runAgentCycleOnce);
+const mockSyncAgentProposalsOnce = vi.mocked(syncAgentProposalsOnce);
+const mockGetQuote = vi.mocked(getQuote);
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 const now = new Date();
@@ -101,6 +112,7 @@ async function json<T>(res: Response): Promise<T> {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetSession.mockResolvedValue('u1' as never);
+  process.env.AGENT_CLEANUP_SECRET = 'cleanup-secret';
   mockTransaction.mockImplementation(async (callback) => {
     if (typeof callback !== 'function') {
       throw new Error('Expected transaction callback');
@@ -279,6 +291,8 @@ describe('POST /api/agents/[id]/strategies', () => {
   beforeEach(() => {
     mockAgentFindUnique.mockResolvedValue(dbAgent as never);
     mockStrategyCreate.mockResolvedValue(dbStrategy as never);
+    mockRunAgentCycleOnce.mockResolvedValue(undefined as never);
+    mockGetQuote.mockResolvedValue({ quote: { quote: '900000000' } } as never);
   });
 
   const validStrategy = {
@@ -297,6 +311,33 @@ describe('POST /api/agents/[id]/strategies', () => {
     expect(res.status).toBe(201);
     const data = await json<{ chainId: number }>(res);
     expect(data.chainId).toBe(480);
+    expect(mockGetQuote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenIn: validStrategy.tokenIn,
+        tokenOut: validStrategy.tokenOut,
+        amount: validStrategy.amountPerInterval,
+        chainId: 480,
+      })
+    );
+    expect(mockRunAgentCycleOnce).toHaveBeenCalledWith('a1');
+  });
+
+  it('returns 400 when Uniswap has no quote for the strategy', async () => {
+    mockGetQuote.mockRejectedValueOnce(
+      new Error('Uniswap quote failed (404): {"errorCode":"ResourceNotFound","detail":"No quotes available"}') as never
+    );
+
+    const res = await postStrategy(
+      req('http://localhost/api/agents/a1/strategies', { method: 'POST', body: JSON.stringify(validStrategy) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect(await json<{ error: string }>(res)).toEqual({
+      error: 'No Uniswap quote is available for this token pair and amount on World Chain',
+    });
+    expect(mockStrategyCreate).not.toHaveBeenCalled();
+    expect(mockRunAgentCycleOnce).not.toHaveBeenCalled();
   });
 
   it('returns 400 when tokenIn === tokenOut', async () => {
@@ -386,12 +427,138 @@ describe('POST /api/agents/[id]/strategies', () => {
   });
 });
 
+// ── DELETE /api/agents/[id]/strategies ────────────────────────────────────────
+
+describe('DELETE /api/agents/[id]/strategies', () => {
+  beforeEach(() => {
+    mockAgentFindUnique.mockResolvedValue(dbAgent as never);
+    mockStrategyFindMany.mockResolvedValue([{ id: 's1' }, { id: 's2' }] as never);
+    mockExecutionDeleteMany.mockResolvedValue({ count: 2 } as never);
+    mockProposalDeleteMany.mockResolvedValue({ count: 2 } as never);
+    mockStrategyDeleteMany.mockResolvedValue({ count: 2 } as never);
+    mockStopAgentLoop.mockResolvedValue(undefined as never);
+  });
+
+  it('deletes all strategies and dependent rows for the owned agent', async () => {
+    const res = await deleteStrategies(
+      req('http://localhost/api/agents/a1/strategies', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(await json<{ deleted: boolean; strategiesDeleted: number }>(res)).toEqual({
+      deleted: true,
+      strategiesDeleted: 2,
+    });
+    expect(mockStrategyFindMany).toHaveBeenCalledWith({
+      where: { agentId: 'a1' },
+      select: { id: true },
+    });
+    expect(mockExecutionDeleteMany).toHaveBeenCalledWith({
+      where: { strategyId: { in: ['s1', 's2'] } },
+    });
+    expect(mockProposalDeleteMany).toHaveBeenCalledWith({
+      where: { strategyId: { in: ['s1', 's2'] } },
+    });
+    expect(mockStrategyDeleteMany).toHaveBeenCalledWith({
+      where: { agentId: 'a1' },
+    });
+    expect(mockStopAgentLoop).toHaveBeenCalledWith('a1');
+  });
+
+  it('returns 404 when the agent does not belong to the session user', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, ownerId: 'other-user' } as never);
+
+    const res = await deleteStrategies(
+      req('http://localhost/api/agents/a1/strategies', { method: 'DELETE' }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+
+    expect(res.status).toBe(404);
+    expect(mockStrategyFindMany).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockStopAgentLoop).not.toHaveBeenCalled();
+  });
+});
+
+// ── DELETE /api/agents/cleanup?scope=strategies ──────────────────────────────
+
+describe('DELETE /api/agents/cleanup?scope=strategies', () => {
+  beforeEach(() => {
+    mockStrategyFindMany.mockResolvedValue([
+      { id: 's1', agentId: 'a1' },
+      { id: 's2', agentId: 'a1' },
+      { id: 's3', agentId: 'a2' },
+    ] as never);
+    mockExecutionDeleteMany.mockResolvedValue({ count: 3 } as never);
+    mockProposalDeleteMany.mockResolvedValue({ count: 3 } as never);
+    mockStrategyDeleteMany.mockResolvedValue({ count: 3 } as never);
+    mockStopAgentLoop.mockResolvedValue(undefined as never);
+  });
+
+  it('deletes all strategies across all agents without a session when the cleanup secret matches', async () => {
+    mockGetSession.mockRejectedValue(new AuthError('Unauthorized', 401));
+
+    const res = await cleanupAgents(req('http://localhost/api/agents/cleanup?scope=strategies', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer cleanup-secret' },
+    }));
+
+    expect(res.status).toBe(200);
+    expect(await json<{
+      deleted: boolean;
+      scope: string;
+      executionsDeleted: number;
+      proposalsDeleted: number;
+      strategiesDeleted: number;
+      agentsAffected: number;
+    }>(res)).toEqual({
+      deleted: true,
+      scope: 'strategies',
+      executionsDeleted: 3,
+      proposalsDeleted: 3,
+      strategiesDeleted: 3,
+      agentsAffected: 2,
+    });
+    expect(mockStrategyFindMany).toHaveBeenCalledWith({
+      select: { id: true, agentId: true },
+    });
+    expect(mockExecutionDeleteMany).toHaveBeenCalledWith({
+      where: { strategyId: { in: ['s1', 's2', 's3'] } },
+    });
+    expect(mockProposalDeleteMany).toHaveBeenCalledWith({
+      where: { strategyId: { in: ['s1', 's2', 's3'] } },
+    });
+    expect(mockStrategyDeleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['s1', 's2', 's3'] } },
+    });
+    expect(mockStopAgentLoop).toHaveBeenCalledWith('a1');
+    expect(mockStopAgentLoop).toHaveBeenCalledWith('a2');
+    expect(mockAgentDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects cleanup when the secret is missing or invalid', async () => {
+    mockGetSession.mockRejectedValue(new AuthError('Unauthorized', 401));
+
+    const res = await cleanupAgents(req('http://localhost/api/agents/cleanup?scope=strategies', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer wrong-secret' },
+    }));
+
+    expect(res.status).toBe(403);
+    expect(mockStrategyFindMany).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockStopAgentLoop).not.toHaveBeenCalled();
+  });
+});
+
 // ── GET /api/agents/[id]/proposals ────────────────────────────────────────────
 
 describe('GET /api/agents/[id]/proposals', () => {
   beforeEach(() => {
     mockAgentFindUnique.mockResolvedValue(dbAgent as never);
     mockProposalFindMany.mockResolvedValue([dbProposal] as never);
+    mockSyncAgentProposalsOnce.mockResolvedValue(undefined as never);
   });
 
   it('returns proposals sorted by createdAt desc', async () => {
@@ -399,6 +566,7 @@ describe('GET /api/agents/[id]/proposals', () => {
       req('http://localhost/api/agents/a1/proposals'),
       { params: Promise.resolve({ id: 'a1' }) }
     );
+    expect(mockSyncAgentProposalsOnce).toHaveBeenCalledWith('a1');
     expect(mockProposalFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: 'desc' } })
     );

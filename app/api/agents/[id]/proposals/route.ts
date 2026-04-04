@@ -3,6 +3,7 @@ import { getSessionUserId, AuthError } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { E } from '@/lib/api-response';
 import { toProposalResponse } from '@/lib/agent-service';
+import { syncAgentProposalsOnce } from '@/services/agent-runtime';
 import type { Proposal } from '@/types';
 
 const VALID_STATUSES = new Set(['pending', 'approved', 'rejected', 'executed']);
@@ -24,6 +25,12 @@ export async function GET(
   // Verify ownership without a separate query by checking ownerId inline
   const agent = await db.agent.findUnique({ where: { id } });
   if (!agent || agent.ownerId !== userId) return E.notFound('Agent not found');
+
+  try {
+    await syncAgentProposalsOnce(id);
+  } catch (err) {
+    console.error('[proposals] syncAgentProposalsOnce failed:', err);
+  }
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');

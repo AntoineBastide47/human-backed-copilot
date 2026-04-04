@@ -59,8 +59,13 @@ vi.mock('@/services/agentkit', () => ({
 vi.mock('@/services/agent-runtime', () => ({
   startAgentLoop: vi.fn().mockResolvedValue(undefined),
   stopAgentLoop: vi.fn().mockResolvedValue(undefined),
+  runAgentCycleOnce: vi.fn().mockResolvedValue(undefined),
+  syncAgentProposalsOnce: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('@/services/uniswap', () => ({ executeSwap: vi.fn() }));
+vi.mock('@/services/uniswap', () => ({
+  executeSwap: vi.fn(),
+  getQuote: vi.fn().mockResolvedValue({ quote: { quote: '900000000' } }),
+}));
 vi.mock('@/lib/constants', () => ({
   WORLD_ID_ACTION: 'register-agent',
   WORLD_CHAIN_ID: 480,

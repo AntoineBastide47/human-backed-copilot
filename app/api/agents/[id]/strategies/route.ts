@@ -3,7 +3,8 @@ import { getSessionUserId, AuthError } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { E, isValidAddress } from '@/lib/api-response';
 import { toStrategyResponse } from '@/lib/agent-service';
-import { startAgentLoop } from '@/services/agent-runtime';
+import { runAgentCycleOnce, startAgentLoop, stopAgentLoop } from '@/services/agent-runtime';
+import { getQuote } from '@/services/uniswap';
 import { WORLD_CHAIN_ID } from '@/lib/constants';
 import type { CreateStrategyInput, AgentStrategy } from '@/types';
 
@@ -80,6 +81,27 @@ export async function POST(
   const resolvedChainId = chainId ?? WORLD_CHAIN_ID;
   if (resolvedChainId !== WORLD_CHAIN_ID) return E.badRequest(`Only World Chain (${WORLD_CHAIN_ID}) is supported`);
 
+  try {
+    const quote = await getQuote({
+      tokenIn,
+      tokenOut,
+      chainId: resolvedChainId,
+      amount: amountPerInterval,
+    });
+
+    if (quote.txFailureReason) {
+      return E.badRequest(`Strategy is not quotable right now: ${quote.txFailureReason}`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('No quotes available') || message.includes('ResourceNotFound')) {
+      return E.badRequest('No Uniswap quote is available for this token pair and amount on World Chain');
+    }
+
+    console.error('[strategies] quote validation failed:', err);
+    return E.badRequest('Unable to validate this strategy with Uniswap right now');
+  }
+
   const strategy = await db.agentStrategy.create({
     data: {
       agentId: id,
@@ -94,8 +116,49 @@ export async function POST(
     },
   });
 
-  // Fire-and-forget: start the agent loop
-  startAgentLoop(id).catch((err) => console.error('[strategies] startAgentLoop failed:', err));
+  try {
+    await runAgentCycleOnce(id);
+  } catch (err) {
+    console.error('[strategies] immediate cycle failed:', err);
+  }
+
+  // Fire-and-forget: keep the loop warm in long-lived processes.
+  startAgentLoop(id, { runImmediately: false }).catch((err) =>
+    console.error('[strategies] startAgentLoop failed:', err),
+  );
 
   return NextResponse.json(toStrategyResponse(strategy), { status: 201 });
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<{ deleted: true; strategiesDeleted: number } | { error: string }>> {
+  let userId: string;
+  try {
+    userId = await getSessionUserId(req);
+  } catch (err) {
+    if (err instanceof AuthError) return E.unauthorized(err.message);
+    return E.internal();
+  }
+
+  const { id } = await params;
+  const agent = await assertOwnership(id, userId);
+  if (!agent) return E.notFound('Agent not found');
+
+  const strategies = await db.agentStrategy.findMany({
+    where: { agentId: id },
+    select: { id: true },
+  });
+  const strategyIds = strategies.map((strategy) => strategy.id);
+
+  await db.$transaction(async (tx) => {
+    await tx.execution.deleteMany({ where: { strategyId: { in: strategyIds } } });
+    await tx.proposal.deleteMany({ where: { strategyId: { in: strategyIds } } });
+    await tx.agentStrategy.deleteMany({ where: { agentId: id } });
+  });
+
+  await stopAgentLoop(id).catch((err) => console.error('[strategies] stopAgentLoop failed:', err));
+
+  return NextResponse.json({ deleted: true, strategiesDeleted: strategyIds.length });
 }

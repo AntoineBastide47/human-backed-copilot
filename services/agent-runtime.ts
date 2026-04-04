@@ -26,8 +26,12 @@ export function isLoopActive(agentId: string): boolean {
   return activeLoops.has(agentId);
 }
 
-export async function startAgentLoop(agentId: string): Promise<void> {
+export async function startAgentLoop(
+  agentId: string,
+  options: { runImmediately?: boolean } = {},
+): Promise<void> {
   if (activeLoops.has(agentId)) return;
+  const { runImmediately = true } = options;
 
   // Register a placeholder so duplicate calls are blocked during the first cycle
   const interval = setInterval(async () => {
@@ -41,6 +45,12 @@ export async function startAgentLoop(agentId: string): Promise<void> {
   activeLoops.set(agentId, interval);
 
   // Run first cycle immediately; if it stops the loop (e.g. agent paused), that's fine
+  if (runImmediately) {
+    await runCycle(agentId);
+  }
+}
+
+export async function runAgentCycleOnce(agentId: string): Promise<void> {
   await runCycle(agentId);
 }
 
@@ -53,6 +63,11 @@ export async function stopAgentLoop(agentId: string): Promise<void> {
 }
 
 async function runCycle(agentId: string): Promise<void> {
+  await syncAgentProposalsOnce(agentId);
+  await executeApprovedProposals(agentId);
+}
+
+export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
   const agent = await db.agent.findUnique({
     where: { id: agentId },
     select: { status: true },
@@ -79,8 +94,6 @@ async function runCycle(agentId: string): Promise<void> {
       );
     }
   }
-
-  await executeApprovedProposals(agentId);
 }
 
 async function processStrategy(
