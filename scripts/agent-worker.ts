@@ -5,6 +5,7 @@
  * Usage: npx tsx scripts/agent-worker.ts
  */
 import { PrismaClient } from '@prisma/client';
+import { startAgentLoop, stopAgentLoop, isLoopActive } from '../services/agent-runtime';
 
 // Validate required env vars before importing anything else
 const REQUIRED_ENV = ['DATABASE_URL', 'WALLET_PRIVATE_KEY', 'WORLD_CHAIN_RPC', 'UNISWAP_API_KEY'] as const;
@@ -14,9 +15,6 @@ for (const key of REQUIRED_ENV) {
     process.exit(1);
   }
 }
-
-// Lazy-import after env validation so module-level singletons init cleanly
-const { startAgentLoop, stopAgentLoop, isLoopActive } = await import('../services/agent-runtime');
 
 const prisma = new PrismaClient();
 const POLL_INTERVAL_MS = 30_000;
