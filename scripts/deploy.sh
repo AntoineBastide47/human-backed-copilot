@@ -8,7 +8,7 @@ set -euo pipefail
 #   brew install railway vercel
 #   railway login
 #   vercel login
-#   .env.local filled with all credentials
+#   .env filled with all credentials
 #
 # Usage:
 #   ./scripts/deploy.sh              # full deploy
@@ -63,7 +63,7 @@ deploy_infra() {
   RAILWAY_DB_URL=$(railway variable list --service Postgres --json 2>/dev/null | node -e "
     const d=require('fs').readFileSync('/dev/stdin','utf8');
     const v=JSON.parse(d);
-    console.log(v.DATABASE_PUBLIC_URL||v.DATABASE_URL||'');
+    console.log(v.DATABASE_PUBLIC_URL||'');
   " 2>/dev/null || echo "")
 
   if [ -n "$RAILWAY_DB_URL" ]; then
@@ -90,9 +90,9 @@ deploy_migrate() {
     " 2>/dev/null || echo "")
     export DATABASE_URL
 
-    # Fall back to .env.local
-    if [ -z "${DATABASE_URL:-}" ] && [ -f .env.local ]; then
-      DATABASE_URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2-)
+    # Fall back to .env
+    if [ -z "${DATABASE_URL:-}" ] && [ -f .env ]; then
+      DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
       export DATABASE_URL
     fi
   fi
@@ -111,8 +111,18 @@ deploy_web() {
   log "Deploying Next.js to Vercel..."
   check_cli vercel
 
-  # Set env vars from .env.local
-  if [ -f .env.local ]; then
+  # Resolve the public DATABASE_URL (internal Railway URL is unreachable from Vercel)
+  PUBLIC_DB_URL="${DATABASE_URL:-}"
+  if [ -z "$PUBLIC_DB_URL" ]; then
+    PUBLIC_DB_URL=$(railway variable list --service Postgres --json 2>/dev/null | node -e "
+      const d=require('fs').readFileSync('/dev/stdin','utf8');
+      const v=JSON.parse(d);
+      console.log(v.DATABASE_PUBLIC_URL||'');
+    " 2>/dev/null || echo "")
+  fi
+
+  # Set env vars from .env, overriding DATABASE_URL with the public URL
+  if [ -f .env ]; then
     log "Pushing env vars to Vercel..."
     while IFS= read -r line; do
       # Skip comments and empty lines
@@ -121,8 +131,12 @@ deploy_web() {
       value="${line#*=}"
       # Skip empty values
       [ -z "$value" ] && continue
+      # Use public URL for DATABASE_URL so Vercel can reach the DB
+      if [ "$key" = "DATABASE_URL" ] && [ -n "$PUBLIC_DB_URL" ]; then
+        value="$PUBLIC_DB_URL"
+      fi
       echo "$value" | vercel env add "$key" production --force 2>/dev/null || true
-    done < .env.local
+    done < .env
   fi
 
   vercel --prod
@@ -184,7 +198,7 @@ case "$STEP" in
     log ""
     log "Full deploy complete. Remaining manual steps:"
     log "  1. Update Developer Portal app URL"
-    log "  2. Fund wallet: send ETH + WETH to $(grep WALLET_PRIVATE_KEY .env.local 2>/dev/null | head -1 | cut -d= -f2- || echo '<WALLET_ADDRESS>')"
+    log "  2. Fund wallet: send ETH + WETH to $(grep WALLET_PRIVATE_KEY .env 2>/dev/null | head -1 | cut -d= -f2- || echo '<WALLET_ADDRESS>')"
     log "  3. Run: ./scripts/deploy.sh trades"
     ;;
   *)

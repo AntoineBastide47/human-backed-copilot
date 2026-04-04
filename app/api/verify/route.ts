@@ -51,29 +51,34 @@ export async function POST(req: Request): Promise<NextResponse<VerifyResponse | 
     if (!address || !nonce) return E.badRequest('Missing address or nonce');
     if (!isValidAddress(address)) return E.badRequest('Invalid wallet address');
 
-    // Use wallet address as a stable identifier (nullifier equivalent)
-    const nullifierHash = `walletauth_${address.toLowerCase()}`;
+    try {
+      // Use wallet address as a stable identifier (nullifier equivalent)
+      const nullifierHash = `walletauth_${address.toLowerCase()}`;
 
-    const user = await db.user.upsert({
-      where: { nullifierHash },
-      create: {
-        nullifierHash,
-        walletAddress: address,
-        verificationLevel: 'orb',
-        isVerified: true,
-      },
-      update: {
-        isVerified: true,
-        walletAddress: address,
-      },
-    });
+      const user = await db.user.upsert({
+        where: { nullifierHash },
+        create: {
+          nullifierHash,
+          walletAddress: address,
+          verificationLevel: 'orb',
+          isVerified: true,
+        },
+        update: {
+          isVerified: true,
+          walletAddress: address,
+        },
+      });
 
-    const token = await signSession({ userId: user.id });
+      const token = await signSession({ userId: user.id });
 
-    return NextResponse.json(
-      { userId: user.id, verified: true, walletAddress: user.walletAddress },
-      { headers: { 'Set-Cookie': sessionCookie(token) } }
-    );
+      return NextResponse.json(
+        { userId: user.id, verified: true, walletAddress: user.walletAddress },
+        { headers: { 'Set-Cookie': sessionCookie(token) } }
+      );
+    } catch (err) {
+      console.error('walletAuth verify failed:', err);
+      return E.internal();
+    }
   }
 
   // ── Legacy World ID proof flow ──
