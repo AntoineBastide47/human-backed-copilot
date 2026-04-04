@@ -33,6 +33,7 @@ vi.mock('@/services/agentkit', () => ({
 }));
 vi.mock('@/services/agent-runtime', () => ({
   startAgentLoop: vi.fn().mockResolvedValue(undefined),
+  stopAgentLoop: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
@@ -40,7 +41,7 @@ vi.mock('@/lib/constants', () => ({
 }));
 
 import { GET as getAgents, POST as postAgent } from '@/app/api/agents/route';
-import { GET as getAgent } from '@/app/api/agents/[id]/route';
+import { GET as getAgent, PATCH as patchAgent } from '@/app/api/agents/[id]/route';
 import { GET as getStrategies, POST as postStrategy } from '@/app/api/agents/[id]/strategies/route';
 import { GET as getProposals } from '@/app/api/agents/[id]/proposals/route';
 import { db } from '@/lib/db';
@@ -50,6 +51,7 @@ const mockGetSession = vi.mocked(getSessionUserId);
 const mockAgentFindMany = vi.mocked(db.agent.findMany);
 const mockAgentFindUnique = vi.mocked(db.agent.findUnique);
 const mockAgentCreate = vi.mocked(db.agent.create);
+const mockAgentUpdate = vi.mocked(db.agent.update);
 const mockUserFindUnique = vi.mocked(db.user.findUnique);
 const mockStrategyFindMany = vi.mocked(db.agentStrategy.findMany);
 const mockStrategyCreate = vi.mocked(db.agentStrategy.create);
@@ -376,5 +378,87 @@ describe('GET /api/agents/[id]/proposals', () => {
     );
     const call = mockProposalFindMany.mock.calls[0][0] as { where: Record<string, unknown> };
     expect(call.where).not.toHaveProperty('status');
+  });
+});
+
+// ── PATCH /api/agents/[id] ────────────────────────────────────────────────────
+
+describe('PATCH /api/agents/[id]', () => {
+  const pausedAgent = { ...dbAgent, status: 'paused' };
+
+  beforeEach(() => {
+    mockAgentFindUnique.mockResolvedValue(dbAgent as never);
+    mockAgentUpdate.mockResolvedValue({ ...dbAgent, status: 'paused' } as never);
+  });
+
+  it('pauses an active agent and returns 200', async () => {
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await json<{ status: string }>(res);
+    expect(data.status).toBe('paused');
+    expect(mockAgentUpdate).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { status: 'paused' } });
+  });
+
+  it('resumes a paused agent and returns 200', async () => {
+    mockAgentFindUnique.mockResolvedValue(pausedAgent as never);
+    mockAgentUpdate.mockResolvedValue({ ...dbAgent, status: 'active' } as never);
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'active' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(200);
+    expect((await json<{ status: string }>(res)).status).toBe('active');
+  });
+
+  it('returns 409 when pausing an already-paused agent (idempotency guard)', async () => {
+    mockAgentFindUnique.mockResolvedValue(pausedAgent as never);
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(409);
+    expect(mockAgentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when agent is still registering', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, status: 'registering' } as never);
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(409);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('registering');
+    expect(mockAgentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for invalid status value', async () => {
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'registering' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(400);
+    expect(mockAgentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    mockGetSession.mockRejectedValue(new AuthError('Unauthorized', 401));
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 when agent does not belong to the session user', async () => {
+    mockAgentFindUnique.mockResolvedValue({ ...dbAgent, ownerId: 'other-user' } as never);
+    const res = await patchAgent(
+      req('http://localhost/api/agents/a1', { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(404);
   });
 });

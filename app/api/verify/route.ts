@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { verifyWorldIdProof } from '@/lib/verify';
 import { signSession, sessionCookie } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { E } from '@/lib/api-response';
+import { E, isValidAddress } from '@/lib/api-response';
 import { WORLD_ID_ACTION } from '@/lib/constants';
 import type { VerifyRequest, VerifyResponse } from '@/types';
 
@@ -21,11 +21,14 @@ export async function POST(req: Request): Promise<NextResponse<VerifyResponse | 
   // Security: action must match the registered Incognito Action exactly
   if (action !== WORLD_ID_ACTION) return E.badRequest('Invalid action');
 
+  // signal carries the wallet address from the frontend — validate before storing
+  const walletAddress = signal ?? '';
+  if (walletAddress && !isValidAddress(walletAddress)) {
+    return E.badRequest('Invalid wallet address in signal');
+  }
+
   const result = await verifyWorldIdProof(payload, action, signal);
   if (!result.success) return E.badRequest('World ID verification failed');
-
-  // signal carries the wallet address from the frontend
-  const walletAddress = signal ?? '';
 
   const user = await db.user.upsert({
     where: { nullifierHash: payload.nullifier_hash },

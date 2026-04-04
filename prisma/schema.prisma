@@ -74,6 +74,7 @@ model Proposal {
   @@index([agentId, status])
   @@index([strategyId])
   @@index([createdAt])
+  @@index([agentId, createdAt(sort: Desc)])
 }
 
 model Execution {
@@ -92,4 +93,5 @@ model Execution {
 
   @@index([agentId])
   @@index([strategyId])
+  @@index([agentId, executedAt(sort: Desc)])
 }

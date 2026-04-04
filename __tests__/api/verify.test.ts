@@ -128,4 +128,22 @@ describe('POST /api/verify', () => {
     await POST(req({ payload: validPayload, action: 'evil-action' }));
     expect(mockVerify).not.toHaveBeenCalled();
   });
+
+  it('returns 400 when signal is a non-EVM-address string', async () => {
+    const res = await POST(req({
+      payload: validPayload,
+      action: 'register-agent',
+      signal: 'not-an-address',
+    }));
+    expect(res.status).toBe(400);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('wallet address');
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when signal is omitted (walletAddress stored as empty string)', async () => {
+    const res = await POST(req({ payload: validPayload, action: 'register-agent' }));
+    expect(res.status).toBe(200);
+    expect(mockVerify).toHaveBeenCalled();
+  });
 });
