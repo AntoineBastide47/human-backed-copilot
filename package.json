@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.2.2",
+    "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "@worldcoin/agentkit": "^0.1.6",
     "@worldcoin/minikit-js": "^2.0.2",
@@ -51,8 +52,8 @@
     "happy-dom": "^17.5.4",
     "prisma": "^7.6.0",
     "tailwindcss": "^4",
-    "typescript": "^5",
     "tsx": "^4.19.3",
+    "typescript": "^5",
     "vitest": "^4.1.2"
   }
 }

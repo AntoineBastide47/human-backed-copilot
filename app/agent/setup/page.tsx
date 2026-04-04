@@ -220,7 +220,7 @@ export default function AgentSetupPage() {
             disabled={isProcessing}
             className="w-full py-4 rounded-2xl font-bold text-lg bg-black text-white active:scale-95 transition-all"
           >
-            {setupStatus === 'submitting' ? 'Registering...' : 'Register Agent'}
+            {isProcessing ? 'Registering...' : 'Register Agent'}
           </button>
         </form>
       )}

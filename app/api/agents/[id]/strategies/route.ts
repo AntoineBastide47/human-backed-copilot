@@ -72,7 +72,7 @@ export async function POST(
   if (!amountPerInterval) return E.badRequest('amountPerInterval is required');
 
   try {
-    if (BigInt(amountPerInterval) <= 0n) return E.badRequest('amountPerInterval must be positive');
+    if (BigInt(amountPerInterval) <= BigInt(0)) return E.badRequest('amountPerInterval must be positive');
   } catch {
     return E.badRequest('amountPerInterval must be a valid integer string');
   }

@@ -44,7 +44,7 @@ deploy_infra() {
   fi
 
   # Add Postgres if not present
-  if ! railway variable list --json 2>/dev/null | grep -q DATABASE_URL; then
+  if ! railway variable list --service Postgres --json 2>/dev/null | grep -q DATABASE_URL; then
     log "Adding PostgreSQL..."
     railway add --database postgres
     log "Waiting for Postgres to provision..."
@@ -52,7 +52,7 @@ deploy_infra() {
   fi
 
   # Add Redis if not present
-  if ! railway variable list --json 2>/dev/null | grep -q REDIS_URL; then
+  if ! railway variable list --service Redis --json 2>/dev/null | grep -q REDIS_URL; then
     log "Adding Redis..."
     railway add --database redis
     log "Waiting for Redis to provision..."
@@ -60,7 +60,7 @@ deploy_infra() {
   fi
 
   # Export DATABASE_PUBLIC_URL for local migration (internal URL only works inside Railway)
-  RAILWAY_DB_URL=$(railway variable list --json 2>/dev/null | node -e "
+  RAILWAY_DB_URL=$(railway variable list --service Postgres --json 2>/dev/null | node -e "
     const d=require('fs').readFileSync('/dev/stdin','utf8');
     const v=JSON.parse(d);
     console.log(v.DATABASE_PUBLIC_URL||v.DATABASE_URL||'');
@@ -83,7 +83,7 @@ deploy_migrate() {
 
   if [ -z "${DATABASE_URL:-}" ]; then
     # Try Railway public URL first (internal URL only works inside Railway)
-    DATABASE_URL=$(railway variable list --json 2>/dev/null | node -e "
+    DATABASE_URL=$(railway variable list --service Postgres --json 2>/dev/null | node -e "
       const d=require('fs').readFileSync('/dev/stdin','utf8');
       const v=JSON.parse(d);
       console.log(v.DATABASE_PUBLIC_URL||'');
@@ -148,6 +148,9 @@ deploy_worker() {
   log "Deploying agent worker to Railway..."
   check_cli railway
 
+  # Create worker service if it doesn't exist
+  railway add --service agent-worker 2>/dev/null || true
+
   # Set env vars on Railway from .env.local
   if [ -f .env.local ]; then
     log "Pushing env vars to Railway..."
@@ -156,17 +159,17 @@ deploy_worker() {
       key="${line%%=*}"
       value="${line#*=}"
       [ -z "$value" ] && continue
-      railway variable set "$key=$value" 2>/dev/null || true
+      railway variable set --service agent-worker "$key=$value" 2>/dev/null || true
     done < .env.local
   fi
 
   # Set the start command for the worker
-  railway variable set "RAILWAY_START_COMMAND=npx tsx scripts/agent-worker.ts"
+  railway variable set --service agent-worker "RAILWAY_START_COMMAND=npx tsx scripts/agent-worker.ts"
 
   # Also set DEMO_MODE for live demo
-  railway variable set "DEMO_MODE=true"
+  railway variable set --service agent-worker "DEMO_MODE=true"
 
-  railway up --detach
+  railway up --service agent-worker --detach
 
   log "Worker deployed. Check railway dashboard for logs."
 }

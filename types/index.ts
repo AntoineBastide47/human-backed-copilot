@@ -1,4 +1,3 @@
-import type { ISuccessResult } from '@worldcoin/minikit-js';
 import type { TypedDataDomain, TypedDataParameter } from 'viem';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6,9 +5,17 @@ import type { TypedDataDomain, TypedDataParameter } from 'viem';
 // P0 and P2: request additions in the group chat, do not edit directly.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// World ID proof payload (previously ISuccessResult from minikit-js v1)
+export interface WorldIdProof {
+  nullifier_hash: string;
+  merkle_root: string;
+  proof: string;
+  verification_level?: string;
+}
+
 // ── Auth ──
 export interface VerifyRequest {
-  payload: ISuccessResult;
+  payload: WorldIdProof;
   action: string;
   signal?: string;
 }
