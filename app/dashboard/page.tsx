@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import {
@@ -49,6 +49,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 export default function DashboardPage() {
   const { agentId, hydrated, isResolving, setAgentId } = useAgentId()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const {
     data: agent,
@@ -177,26 +178,45 @@ export default function DashboardPage() {
         ) : agentLoading && !agent ? (
           <AgentCardSkeleton />
         ) : agent ? (
-          <div className="bg-surface-container-lowest rounded-xl px-5 py-4 border border-outline-variant/10 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Active Agent</p>
-              <h2 className="text-base font-bold text-on-surface">{agentDisplay}</h2>
-              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[agent.status]}`}>
-                {agent.status}
-              </span>
+          <div className="bg-surface-container-lowest rounded-xl px-5 py-4 border border-outline-variant/10">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Active Agent</p>
+                <h2 className="text-base font-bold text-on-surface">{agentDisplay}</h2>
+                <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[agent.status]}`}>
+                  {agent.status}
+                </span>
+              </div>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-9 h-9 flex items-center justify-center rounded-lg text-on-surface-variant active:text-error active:bg-error/10 transition-colors"
+                aria-label="Delete agent"
+              >
+                <span className="material-symbols-outlined text-xl">delete</span>
+              </button>
             </div>
-            <button
-              onClick={() => {
-                if (confirm('Delete this agent?')) {
-                  fetchJson(`/api/agents/${agentId}`, { method: 'DELETE' }).catch(() => {})
-                  setAgentId(null)
-                }
-              }}
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
-              aria-label="Delete agent"
-            >
-              <span className="material-symbols-outlined text-xl">delete</span>
-            </button>
+            {confirmDelete && (
+              <div className="mt-3 pt-3 border-t border-outline-variant/10 flex items-center justify-between gap-3">
+                <p className="text-sm text-on-surface-variant">Delete this agent?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-container text-on-surface-variant"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      fetchJson(`/api/agents/${agentId}`, { method: 'DELETE' }).catch(() => {})
+                      setAgentId(null)
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-error text-white"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <ErrorState message="Agent not available yet." onRetry={() => mutateAgent()} />
