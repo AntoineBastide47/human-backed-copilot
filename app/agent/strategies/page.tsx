@@ -25,8 +25,8 @@ type Interval = 'hourly' | 'daily' | 'weekly'
 export default function StrategiesPage() {
   const router = useRouter()
   const { agentId, hydrated, isResolving } = useAgentId()
-  const [tokenIn, setTokenIn] = useState(TOKEN_PAIRS[0].tokenIn)
-  const [tokenOut, setTokenOut] = useState(TOKEN_PAIRS[0].tokenOut)
+  const [tokenIn, setTokenIn] = useState<string>(TOKEN_PAIRS[0].tokenIn)
+  const [tokenOut, setTokenOut] = useState<string>(TOKEN_PAIRS[0].tokenOut)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
   const [autoExecute, setAutoExecute] = useState(false)

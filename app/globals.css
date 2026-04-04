@@ -4,6 +4,10 @@
   --font-sans: var(--font-manrope);
 }
 
+:root {
+  --font-manrope: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+}
+
 @theme {
   /* Surface */
   --color-background: #f6fafe;
@@ -74,7 +78,7 @@
 }
 
 body {
-  font-family: var(--font-manrope, 'Manrope', sans-serif);
+  font-family: var(--font-manrope);
   background-color: #f6fafe;
   color: #26343d;
   -webkit-font-smoothing: antialiased;
