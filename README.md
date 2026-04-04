@@ -10,18 +10,6 @@ Built at **ETHGlobal Cannes 2026**.
 
 Users verify their humanity with **World ID**, then register an AI trading agent that proposes DCA and rebalance actions on **World Chain**. Every trade requires explicit human approval before execution. The agent gets an **ENS subname** (`name.copilot.eth`) and is registered on-chain via **World AgentKit**.
 
----
-
-## Bounty targets
-
-| Bounty | Prize |
-|--------|-------|
-| World Agent Kit | $8k |
-| World ID 4.0 | $8k |
-| MiniKit 2.0 | $4k |
-| Uniswap Trading API | $10k |
-| ENS AI Agents | $5k |
-| ENS Creative | $5k |
 
 ---
 
