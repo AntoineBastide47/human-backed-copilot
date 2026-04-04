@@ -152,15 +152,6 @@ ngrok http 3000               # expose over HTTPS for World App
 npx @worldcoin/agentkit-cli register <agent-wallet-address>
 ```
 
----
-
-## Tests
-
-```bash
-pnpm test
-```
-
-Tests live in `__tests__/` and `app/**/__tests__/`. Stack: vitest + @testing-library/react + happy-dom.
 
 ---
 
