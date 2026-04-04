@@ -10,8 +10,13 @@ export const AGENT_BOOK_ADDRESS = '0xA23aB2712eA7BBa896930544C7d6636a96b944dA' a
 export const UNISWAP_API_BASE = 'https://trade-api.gateway.uniswap.org';
 export const UNISWAP_ROUTER_VERSION = '2.0';
 
-// World ID
+// World ID (our app)
 export const WORLD_ID_ACTION = 'register-agent';
+
+// AgentBook registration (World ID app & action used by AgentBook contract)
+export const AGENTBOOK_APP_ID = 'app_a7c3e2b6b83927251a0db5345bd7146a';
+export const AGENTBOOK_ACTION = 'agentbook-registration';
+export const AGENTBOOK_RELAY_URL = 'https://x402-worldchain.vercel.app';
 
 // ENS
 export const ENS_PARENT_NAME = 'copilot.eth';

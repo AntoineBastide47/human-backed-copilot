@@ -132,6 +132,7 @@ export interface CreateAgentInput {
   walletAddress: string;
   spendLimits?: { maxPerTx: string; dailyCap: string };
   proof?: WorldIdOnChainProof;
+  txHash?: string;
 }
 export interface CreateStrategyInput {
   name: string;

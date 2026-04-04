@@ -2,7 +2,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { IDKitRequestWidget, orbLegacy, type IDKitResult } from '@worldcoin/idkit'
+import { IDKitRequestWidget, orbLegacy, deviceLegacy, type IDKitResult } from '@worldcoin/idkit'
+import { MiniKit } from '@worldcoin/minikit-js'
+import { encodeFunctionData, decodeAbiParameters } from 'viem'
 import { fetchJson } from '@/components/sync4-client'
 import type { Agent, WorldIdOnChainProof } from '@/types'
 import type { RpContext } from '@worldcoin/idkit'
@@ -14,6 +16,22 @@ import {
 type SetupStatus = 'idle' | 'submitting' | 'verifying' | 'registering' | 'active' | 'error'
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+
+const REGISTER_ABI = [
+  {
+    inputs: [
+      { name: 'agent', type: 'address' },
+      { name: 'root', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'nullifierHash', type: 'uint256' },
+      { name: 'proof', type: 'uint256[8]' },
+    ],
+    name: 'register',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const
 
 // ── Step tracker ────────────────────────────────────────────────────────
 
@@ -75,6 +93,8 @@ export default function AgentSetupPage() {
   const [rpContext, setRpContext] = useState<RpContext | null>(null)
   const [appId, setAppId] = useState<`app_${string}` | null>(null)
   const [action, setAction] = useState<string>('')
+  const [agentBookAddress, setAgentBookAddress] = useState<string>('')
+  const [agentBookNonce, setAgentBookNonce] = useState<string>('0')
 
   // Store proof from IDKit for use after widget closes
   const proofRef = useRef<WorldIdOnChainProof | null>(null)
@@ -120,16 +140,23 @@ export default function AgentSetupPage() {
         return
       }
 
-      // Get signed rp_context from backend
+      // Get signed rp_context + on-chain nonce from backend
       const prepared = await fetchJson<{
         rp_context: RpContext
         app_id: string
         action: string
-      }>('/api/agents/prepare', { method: 'POST' })
+        agent_book_address: string
+        agent_book_nonce: string
+      }>('/api/agents/prepare', {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress }),
+      })
 
       setRpContext(prepared.rp_context)
       setAppId(prepared.app_id as `app_${string}`)
       setAction(prepared.action)
+      setAgentBookAddress(prepared.agent_book_address)
+      setAgentBookNonce(prepared.agent_book_nonce ?? '0')
       setSetupStatus('verifying')
       setIdkitOpen(true)
     } catch (err) {
@@ -141,6 +168,7 @@ export default function AgentSetupPage() {
   // ── IDKit handleVerify: called when proof is ready, before onSuccess ─
 
   const handleVerify = useCallback(async (result: IDKitResult) => {
+    console.log('[IDKit] handleVerify called with:', JSON.stringify(result))
     // Extract legacy v3 proof fields
     const responses = result.responses
     if (!responses || responses.length === 0) {
@@ -161,7 +189,7 @@ export default function AgentSetupPage() {
     }
   }, [])
 
-  // ── IDKit onSuccess: proof verified, now register on-chain ──────────
+  // ── IDKit onSuccess: proof verified, now register on-chain via MiniKit ──
 
   const handleIdkitSuccess = useCallback(async () => {
     const proof = proofRef.current
@@ -174,22 +202,60 @@ export default function AgentSetupPage() {
     setSetupStatus('registering')
 
     try {
+      // Decode the ABI-encoded proof into uint256[8]
+      const [proofArray] = decodeAbiParameters(
+        [{ type: 'uint256[8]' }],
+        proof.proof as `0x${string}`,
+      )
+
+      // Encode the register() calldata
+      const data = encodeFunctionData({
+        abi: REGISTER_ABI,
+        functionName: 'register',
+        args: [
+          walletAddress as `0x${string}`,
+          BigInt(proof.merkle_root),
+          BigInt(agentBookNonce),
+          BigInt(proof.nullifier_hash),
+          proofArray,
+        ],
+      })
+
+      // Submit tx via user's World App wallet
+      let result: Awaited<ReturnType<typeof MiniKit.sendTransaction>>
+      try {
+        result = await MiniKit.sendTransaction({
+          chainId: 480,
+          transactions: [{ to: agentBookAddress, data }],
+        })
+      } catch (txErr) {
+        throw new Error(`sendTransaction threw: ${JSON.stringify(txErr)}`)
+      }
+
+      const txData = result?.data as Record<string, unknown> | undefined
+      const userOpHash = txData?.userOpHash as string | undefined
+      if (!userOpHash) {
+        throw new Error(`sendTransaction failed: ${JSON.stringify(result)}`)
+      }
+
+      // Create agent record in backend (no proof needed, tx already sent)
       const agent = await fetchJson<Agent>('/api/agents', {
         method: 'POST',
         body: JSON.stringify({
           walletAddress,
           ensName: ensName || undefined,
-          proof,
+          txHash: userOpHash,
         }),
       })
 
       setLocalStorageValue('hbc_agentId', agent.id)
       setSetupStatus('active')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'On-chain registration failed')
+      const detail = err instanceof Error ? err.message : JSON.stringify(err)
+      setError(`On-chain registration failed: ${detail}`)
       setSetupStatus('error')
     }
-  }, [walletAddress, ensName])
+  }, [walletAddress, ensName, agentBookAddress, agentBookNonce])
 
   // ── Form submit handler ─────────────────────────────────────────────
 
@@ -230,7 +296,7 @@ export default function AgentSetupPage() {
           )}
           {setupStatus === 'error' && error && (
             <div className="space-y-3">
-              <p role="alert" className="text-center text-sm text-red-500">{error}</p>
+              <pre role="alert" className="text-left text-xs text-red-500 whitespace-pre-wrap break-all overflow-auto max-h-60">{error}</pre>
               <button
                 type="button"
                 onClick={() => {
@@ -311,7 +377,19 @@ export default function AgentSetupPage() {
           handleVerify={handleVerify}
           onSuccess={handleIdkitSuccess}
           onError={(code) => {
-            setError(`World ID verification failed: ${code}`)
+            // Surface full error on screen since no dev tools available
+            const detail = typeof code === 'object' ? JSON.stringify(code, null, 2) : String(code)
+            const ctx = JSON.stringify({
+              app_id: appId,
+              action,
+              rp_nonce: rpContext?.nonce?.slice(0, 10),
+              rp_id: rpContext?.rp_id,
+              created_at: rpContext?.created_at,
+              expires_at: rpContext?.expires_at,
+              sig_prefix: rpContext?.signature?.slice(0, 14),
+              wallet: walletAddress,
+            })
+            setError(`IDKit error: ${detail}\n\nConfig: ${ctx}`)
             setSetupStatus('error')
           }}
         />
