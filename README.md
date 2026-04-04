@@ -170,18 +170,3 @@ npx @worldcoin/agentkit-cli register <agent-wallet-address>
 vercel deploy --prod
 ```
 
----
-
-## Key gotchas
-
-**Uniswap permit2** — if `quote.permitData` exists, sign it and include both `signature` + `permitData` in the swap request. Never send one without the other or omit both when present.
-
-**World ID action string** — `'register-agent'` must be identical on the frontend (`MiniKit.commandsAsync.verify`) and backend (`verifyCloudProof`). A mismatch causes silent failure with no error in logs.
-
-**MiniKit install race** — call `MiniKit.install()` before any `commandsAsync` call, or guard with `MiniKit.isInstalled()`.
-
-**Agent loop** — runs on Railway as an always-on worker. `InMemoryAgentKitStorage` resets on restart; implement `DatabaseAgentKitStorage` for production persistence.
-
-**Wrong USDC address** — always use the World Chain USDC (`0x79A02482A880bCE3F13e09Da970dC34db4CD24d1`). Using mainnet USDC causes silent reverts.
-
-**ENS subnames** — off-chain (no gas) for hackathon speed. Text records: `strategy`, `worldid`, `owner`, `url`.
