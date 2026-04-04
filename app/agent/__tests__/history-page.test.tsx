@@ -157,6 +157,16 @@ describe('HistoryPage', () => {
     expect(screen.getByText('Retry')).toBeTruthy()
   })
 
+  it('shows confirming text instead of a link when txHash is empty', async () => {
+    executionState.data = {
+      data: [{ ...execution, txHash: '' }],
+      nextCursor: null,
+    }
+    await renderPage()
+    expect(screen.getByText('confirming…')).toBeTruthy()
+    expect(screen.queryByText(/0xdeadbeef/)).toBeNull()
+  })
+
   it('uses strategy token metadata when executions omit token addresses', async () => {
     executionState.data = {
       data: [
