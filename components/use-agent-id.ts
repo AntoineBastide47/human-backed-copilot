@@ -1,19 +1,12 @@
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { fetchLatestAgentId, readStoredValue, persistAgentId, STORAGE_KEYS } from '@/components/sync4-client'
-
-function subscribeToStorage() {
-  return () => {}
-}
+import { fetchLatestAgentId } from '@/components/sync4-client'
+import { setLocalStorageValue, useLocalStorageValue } from '@/lib/client-storage'
 
 export function useAgentId() {
-  const storedAgentId = useSyncExternalStore(
-    subscribeToStorage,
-    () => readStoredValue(STORAGE_KEYS.agentId),
-    () => null
-  )
+  const storedAgentId = useLocalStorageValue('hbc_agentId')
   const [agentIdOverride, setAgentIdOverride] = useState<string | null | undefined>(undefined)
   const hydrated = typeof window !== 'undefined'
   const shouldRecover = hydrated && !(agentIdOverride ?? storedAgentId)
@@ -30,12 +23,21 @@ export function useAgentId() {
 
   useEffect(() => {
     if (!storedAgentId && recoveredAgentId) {
-      persistAgentId(recoveredAgentId)
+      setLocalStorageValue('hbc_agentId', recoveredAgentId)
     }
   }, [recoveredAgentId, storedAgentId])
 
   const setAgentId = (nextAgentId: string | null) => {
-    persistAgentId(nextAgentId)
+    if (nextAgentId) {
+      setLocalStorageValue('hbc_agentId', nextAgentId)
+    } else if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('hbc_agentId')
+      window.dispatchEvent(
+        new CustomEvent<{ key: 'hbc_agentId' }>('hbc-storage', {
+          detail: { key: 'hbc_agentId' },
+        })
+      )
+    }
     setAgentIdOverride(nextAgentId)
   }
 

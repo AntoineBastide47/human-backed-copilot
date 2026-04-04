@@ -142,9 +142,9 @@ export function formatTokenAmount(
 
   try {
     const amount = BigInt(rawAmount)
-    const divisor = 10n ** BigInt(decimals)
-    const scale = 10n ** BigInt(digits)
-    const rounded = (amount * scale + divisor / 2n) / divisor
+    const divisor = BigInt(10) ** BigInt(decimals)
+    const scale = BigInt(10) ** BigInt(digits)
+    const rounded = (amount * scale + divisor / BigInt(2)) / divisor
     const whole = rounded / scale
 
     if (digits === 0) return whole.toString()
@@ -172,9 +172,9 @@ export function toTokenAmount(humanAmount: string, address?: string | null): str
   const whole = BigInt(wholePart || '0')
   const paddedFraction = (fractionPart.slice(0, decimals) + '0'.repeat(decimals)).slice(0, decimals)
   const fraction = BigInt(paddedFraction || '0')
-  const raw = whole * 10n ** BigInt(decimals) + fraction
+  const raw = whole * BigInt(10) ** BigInt(decimals) + fraction
 
-  if (raw <= 0n) {
+  if (raw <= BigInt(0)) {
     throw new Error('Amount must be greater than 0')
   }
 
