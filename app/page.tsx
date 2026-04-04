@@ -1,26 +1,17 @@
 'use client'
-import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { VerifyButton } from '@/components/verify-button'
-import { readStoredValue, STORAGE_KEYS, writeStoredValue } from '@/components/sync4-client'
-
-function subscribeToStorage() {
-  return () => {}
-}
+import {
+  setLocalStorageValue,
+  useLocalStorageValue,
+} from '@/lib/client-storage'
 
 export default function HomePage() {
-  const storedUserId = useSyncExternalStore(
-    subscribeToStorage,
-    () => readStoredValue(STORAGE_KEYS.userId),
-    () => null
-  )
-  const [userIdOverride, setUserIdOverride] = useState<string | null | undefined>(undefined)
-  const userId = userIdOverride ?? storedUserId
+  const userId = useLocalStorageValue('hbc_userId')
 
   const handleVerified = (uid: string, walletAddress: string) => {
-    writeStoredValue(STORAGE_KEYS.userId, uid)
-    writeStoredValue(STORAGE_KEYS.walletAddress, walletAddress)
-    setUserIdOverride(uid)
+    setLocalStorageValue('hbc_userId', uid)
+    setLocalStorageValue('hbc_walletAddress', walletAddress)
   }
 
   return (

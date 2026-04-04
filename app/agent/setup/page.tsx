@@ -2,8 +2,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { fetchJson, persistAgentId, readStoredValue, STORAGE_KEYS } from '@/components/sync4-client'
+import { fetchJson } from '@/components/sync4-client'
 import type { Agent } from '@/types'
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from '@/lib/client-storage'
 
 type SetupStatus = 'idle' | 'submitting' | 'registering' | 'active' | 'timeout' | 'error'
 
@@ -100,7 +104,7 @@ export default function AgentSetupPage() {
     setSetupStatus('submitting')
 
     try {
-      const userId = readStoredValue(STORAGE_KEYS.userId)
+      const userId = getLocalStorageValue('hbc_userId')
       if (!userId) {
         setError('Not verified. Go back and verify with World ID first.')
         setSetupStatus('error')
@@ -112,7 +116,7 @@ export default function AgentSetupPage() {
         body: JSON.stringify({ walletAddress, ensName: ensName || undefined }),
       })
 
-      persistAgentId(agent.id)
+      setLocalStorageValue('hbc_agentId', agent.id)
       setAgentId(agent.id)
       setSetupStatus('registering')
     } catch (err) {

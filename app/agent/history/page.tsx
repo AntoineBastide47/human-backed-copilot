@@ -23,7 +23,6 @@ const USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1'
 
 const executionsFetcher = async (url: string) =>
   normalizeExecutionPage(await fetchJson<unknown>(url))
-
 function StatusBadge({ status }: { status: Execution['status'] }) {
   const styles = {
     confirmed: 'bg-green-100 text-green-700',

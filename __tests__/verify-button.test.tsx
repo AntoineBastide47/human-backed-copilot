@@ -40,6 +40,8 @@ const MOCK_VERIFY_DATA = {
 import { VerifyButton } from '@/components/verify-button'
 import { MiniKit } from '@worldcoin/minikit-js'
 
+type VerifyCommandResult = Awaited<ReturnType<typeof MiniKit.commandsAsync.verify>>
+
 describe('VerifyButton — mock mode (USE_MOCK=true)', () => {
   beforeEach(() => {
     mockConfig.USE_MOCK = true
@@ -99,7 +101,7 @@ describe('VerifyButton — live mode (USE_MOCK=false)', () => {
     vi.mocked(MiniKit.isInstalled).mockReturnValue(true)
     vi.mocked(MiniKit.commandsAsync.verify).mockResolvedValue({
       finalPayload: { status: 'error' },
-    } as any)
+    } as VerifyCommandResult)
 
     render(<VerifyButton onVerified={vi.fn()} />)
     fireEvent.click(screen.getByRole('button'))
@@ -111,7 +113,7 @@ describe('VerifyButton — live mode (USE_MOCK=false)', () => {
     vi.mocked(MiniKit.isInstalled).mockReturnValue(true)
     vi.mocked(MiniKit.commandsAsync.verify).mockResolvedValue({
       finalPayload: { status: 'success', merkle_root: '', nullifier_hash: '', proof: '', verification_level: 'orb' },
-    } as any)
+    } as VerifyCommandResult)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ verified: false }),
@@ -127,7 +129,7 @@ describe('VerifyButton — live mode (USE_MOCK=false)', () => {
     vi.mocked(MiniKit.isInstalled).mockReturnValue(true)
     vi.mocked(MiniKit.commandsAsync.verify).mockResolvedValue({
       finalPayload: { status: 'success', merkle_root: '', nullifier_hash: '', proof: '', verification_level: 'orb' },
-    } as any)
+    } as VerifyCommandResult)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 500,

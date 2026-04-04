@@ -2,12 +2,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
+import type { ReactNode } from 'react'
+import type { Proposal } from '@/types'
+
+type LinkProps = {
+  href: string
+  children: ReactNode
+  className?: string
+}
+
+type ProposalWithTxHash = Proposal & { txHash?: string }
+type SwrState = {
+  data: ProposalWithTxHash[] | undefined
+  error: Error | undefined
+  isLoading: boolean
+}
 
 // ── Stable mocks ────────────────────────────────────────────────────────────
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('next/link', () => ({
-  default: ({ href, children, className }: any) => <a href={href} className={className}>{children}</a>,
+  default: ({ href, children, className }: LinkProps) => <a href={href} className={className}>{children}</a>,
 }))
 vi.mock('@/lib/constants', () => ({
   TOKEN_MAP: {
@@ -22,13 +37,13 @@ vi.mock('@/lib/mock-data', () => ({
   USE_MOCK: false,
   MOCK_PROPOSALS: [],
   MOCK_AGENT: { id: 'mock-agent-1' },
-  apiFetch: (...args: any[]) => mockApiFetch(...args),
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
 }))
 
 // ── SWR mock — writable so each test can control the response ────────────────
-const swrData = { data: undefined as any, error: undefined as any, isLoading: false }
+const swrData: SwrState = { data: undefined, error: undefined, isLoading: false }
 vi.mock('swr', () => ({
-  default: (_key: any, _fetcher: any, _opts: any) => ({ ...swrData, mutate: vi.fn() }),
+  default: () => ({ ...swrData, mutate: vi.fn() }),
 }))
 
 const WETH = '0x4200000000000000000000000000000000000006'
@@ -49,7 +64,7 @@ beforeEach(() => {
   swrData.isLoading = false
   mockApiFetch.mockReset()
   vi.stubGlobal('localStorage', {
-    getItem: (k: string) => k === 'hbc_agentId' ? 'agent-123' : null,
+    getItem: (key: string) => key === 'hbc_agentId' ? 'agent-123' : null,
     setItem: vi.fn(),
   })
 })
