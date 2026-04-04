@@ -228,7 +228,7 @@ describe('updateProposalStatus', () => {
 });
 
 describe('getRecentProposal', () => {
-  it('queries pending and approved proposals within the window', async () => {
+  it('queries pending, approved AND rejected proposals within the window', async () => {
     mockProposalFindFirst.mockResolvedValue(dbProposal as never);
     const result = await getRecentProposal('a1', 's1', 3_600_000);
     expect(mockProposalFindFirst).toHaveBeenCalledWith(
@@ -236,12 +236,20 @@ describe('getRecentProposal', () => {
         where: expect.objectContaining({
           agentId: 'a1',
           strategyId: 's1',
-          status: { in: ['pending', 'approved'] },
+          status: { in: ['pending', 'approved', 'rejected'] },
           createdAt: expect.objectContaining({ gte: expect.any(Date) }),
         }),
       })
     );
     expect(result?.id).toBe('p1');
+  });
+
+  it('returns a rejected proposal — blocking re-proposal for the interval window', async () => {
+    const rejectedProposal = { ...dbProposal, status: 'rejected' };
+    mockProposalFindFirst.mockResolvedValue(rejectedProposal as never);
+    const result = await getRecentProposal('a1', 's1', 86_400_000);
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe('rejected');
   });
 
   it('returns null when no recent proposal found', async () => {
