@@ -5,7 +5,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     agentStrategy: { findMany: vi.fn() },
     proposal: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-    execution: { create: vi.fn() },
+    execution: { create: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -17,6 +17,8 @@ import {
   markProposalExecuted,
   saveExecution,
   getRecentProposal,
+  getLastExecutionForStrategy,
+  updateProposalStatus,
   toStrategyResponse,
   toProposalResponse,
   toExecutionResponse,
@@ -29,7 +31,9 @@ const mockStrategy = vi.mocked(db.agentStrategy.findMany);
 const mockProposalCreate = vi.mocked(db.proposal.create);
 const mockProposalFindMany = vi.mocked(db.proposal.findMany);
 const mockProposalFindFirst = vi.mocked(db.proposal.findFirst);
+const mockProposalUpdate = vi.mocked(db.proposal.update);
 const mockExecutionCreate = vi.mocked(db.execution.create);
+const mockExecutionFindFirst = vi.mocked(db.execution.findFirst);
 const mockTransaction = vi.mocked(db.$transaction);
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -182,6 +186,44 @@ describe('saveExecution', () => {
     const result = await saveExecution(data);
     expect(result.id).toBe('e1');
     expect(result.executedAt).toBe(isoNow);
+  });
+});
+
+describe('getLastExecutionForStrategy', () => {
+  it('returns executedAt date of the most recent execution for the strategy', async () => {
+    mockExecutionFindFirst.mockResolvedValue({ executedAt: now } as never);
+    const result = await getLastExecutionForStrategy('s1');
+    expect(mockExecutionFindFirst).toHaveBeenCalledWith({
+      where: { strategyId: 's1' },
+      orderBy: { executedAt: 'desc' },
+      select: { executedAt: true },
+    });
+    expect(result).toEqual(now);
+  });
+
+  it('returns null when no execution exists for the strategy', async () => {
+    mockExecutionFindFirst.mockResolvedValue(null as never);
+    expect(await getLastExecutionForStrategy('s1')).toBeNull();
+  });
+});
+
+describe('updateProposalStatus', () => {
+  it('updates the proposal status to the given value', async () => {
+    mockProposalUpdate.mockResolvedValue({} as never);
+    await updateProposalStatus('p1', 'pending');
+    expect(mockProposalUpdate).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { status: 'pending' },
+    });
+  });
+
+  it('can set any status string (used for rollback to pending)', async () => {
+    mockProposalUpdate.mockResolvedValue({} as never);
+    await updateProposalStatus('p2', 'executed');
+    expect(mockProposalUpdate).toHaveBeenCalledWith({
+      where: { id: 'p2' },
+      data: { status: 'executed' },
+    });
   });
 });
 
