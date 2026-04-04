@@ -5,14 +5,11 @@ import useSWR from 'swr'
 import {
   fetchJson,
   isApiError,
-  normalizeProposalList,
 } from '@/components/sync4-client'
 import { useAgentId } from '@/components/use-agent-id'
 import type { Agent, AgentStrategy } from '@/types'
 
 const fetcher = <T,>(url: string) => fetchJson<T>(url)
-const proposalsFetcher = async (url: string) =>
-  normalizeProposalList(await fetchJson<unknown>(url))
 
 function AgentCardSkeleton() {
   return (
@@ -78,13 +75,6 @@ export default function DashboardPage() {
     { refreshInterval: 30000 }
   )
 
-  const { data: pendingProposals } = useSWR(
-    agentId ? `/api/agents/${agentId}/proposals?status=pending` : null,
-    proposalsFetcher,
-    { refreshInterval: 5000 }
-  )
-
-  const pendingCount = pendingProposals?.length ?? 0
 
   useEffect(() => {
     if (isApiError(agentError) && agentError.status === 404) {
@@ -362,29 +352,6 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* Quick actions */}
-      <section className="grid grid-cols-2 gap-3">
-        <Link
-          href="/agent/proposals"
-          className="relative bg-[#162238] text-white rounded-xl p-4 text-center text-sm font-bold shadow-sm"
-        >
-          View Proposals
-          {pendingCount > 0 && (
-            <span
-              data-testid="proposals-link-badge"
-              className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-error text-white text-xs font-bold rounded-full flex items-center justify-center"
-            >
-              {pendingCount > 9 ? '9+' : pendingCount}
-            </span>
-          )}
-        </Link>
-        <Link
-          href="/agent/history"
-          className="bg-surface-container-low text-on-surface-variant rounded-xl p-4 text-center text-sm font-bold"
-        >
-          History
-        </Link>
-      </section>
 
     </div>
   )
