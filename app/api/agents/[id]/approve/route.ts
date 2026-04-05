@@ -62,13 +62,15 @@ export async function POST(
   if (proposal.status !== 'pending') return E.conflict('Proposal already processed');
   if (proposal.agent.status !== 'active') return E.conflict('Agent is not active');
 
-  // Spend limit enforcement
+  // Spend limit enforcement — prefer structured notionalUsd when available
   const limits = normalizeSpendLimits(
     proposal.agent.spendLimits as { maxPerTx?: string; dailyCap?: string } | null,
   );
   if (limits.maxPerTx !== '0') {
     try {
-      const proposalNotional = getProposalUsdcNotional(proposal);
+      const proposalNotional = proposal.notionalUsd
+        ? BigInt(proposal.notionalUsd)
+        : getProposalUsdcNotional(proposal);
       if (proposalNotional > BigInt(limits.maxPerTx)) {
         return E.badRequest(
           `Trade size ${formatUsdcAmount(proposalNotional)} exceeds maxPerTx limit ${formatUsdcAmount(limits.maxPerTx)}`

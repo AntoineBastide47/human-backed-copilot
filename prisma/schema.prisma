@@ -7,30 +7,30 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(uuid())
-  nullifierHash     String    @unique
+  id                String   @id @default(uuid())
+  nullifierHash     String   @unique
   walletAddress     String
   verificationLevel String
-  isVerified        Boolean   @default(false)
+  isVerified        Boolean  @default(false)
   agents            Agent[]
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime @default(now())
 }
 
 model Agent {
-  id                  String          @id @default(uuid())
-  ownerId             String
-  owner               User            @relation(fields: [ownerId], references: [id])
-  walletAddress       String
-  agentbookRegId      String?
-  ensName             String?
-  status              String          @default("registering")
-  usageCount          Int             @default(0)
-  freeTrialRemaining  Int             @default(3)
-  spendLimits         Json            @default("{}")
-  strategies          AgentStrategy[]
-  proposals           Proposal[]
-  executions          Execution[]
-  createdAt           DateTime        @default(now())
+  id                 String          @id @default(uuid())
+  ownerId            String
+  owner              User            @relation(fields: [ownerId], references: [id])
+  walletAddress      String
+  agentbookRegId     String?
+  ensName            String?
+  status             String          @default("registering")
+  usageCount         Int             @default(0)
+  freeTrialRemaining Int             @default(3)
+  spendLimits        Json            @default("{}")
+  strategies         AgentStrategy[]
+  proposals          Proposal[]
+  executions         Execution[]
+  createdAt          DateTime        @default(now())
 
   @@index([ownerId])
   @@index([status])
@@ -54,39 +54,52 @@ model AgentKitNonce {
 }
 
 model AgentStrategy {
-  id                String      @id @default(uuid())
-  agentId           String
-  agent             Agent       @relation(fields: [agentId], references: [id])
-  name              String
-  tokenIn           String
-  tokenOut          String
-  chainId           Int         @default(480)
-  amountPerInterval String
-  interval          String
-  autoExecute       Boolean     @default(false)
-  status            String      @default("active")
-  proposals         Proposal[]
-  executions        Execution[]
-  createdAt         DateTime    @default(now())
+  id                  String      @id @default(uuid())
+  agentId             String
+  agent               Agent       @relation(fields: [agentId], references: [id])
+  name                String
+  tokenIn             String
+  tokenOut            String
+  chainId             Int         @default(480)
+  amountPerInterval   String
+  interval            String
+  autoExecute         Boolean     @default(false)
+  status              String      @default("active")
+  strategyType        String      @default("dca")
+  targetAllocationBps Int?
+  rebalanceBandBps    Int?
+  maxSlippageBps      Int?
+  minNotionalUsd      String?
+  cooldownMinutes     Int?
+  lastTriggeredAt     DateTime?
+  metadata            Json        @default("{}")
+  proposals           Proposal[]
+  executions          Execution[]
+  createdAt           DateTime    @default(now())
 
   @@index([agentId, status])
 }
 
 model Proposal {
-  id              String         @id @default(uuid())
-  agentId         String
-  agent           Agent          @relation(fields: [agentId], references: [id])
-  strategyId      String
-  strategy        AgentStrategy  @relation(fields: [strategyId], references: [id])
-  type            String
-  tokenIn         String
-  tokenOut        String
-  amount          String
-  estimatedOutput String         @default("0")
-  reasoning       String
-  status          String         @default("pending")
-  execution       Execution?
-  createdAt       DateTime       @default(now())
+  id                  String        @id @default(uuid())
+  agentId             String
+  agent               Agent         @relation(fields: [agentId], references: [id])
+  strategyId          String
+  strategy            AgentStrategy @relation(fields: [strategyId], references: [id])
+  type                String
+  tokenIn             String
+  tokenOut            String
+  amount              String
+  estimatedOutput     String        @default("0")
+  reasoning           String
+  status              String        @default("pending")
+  triggerType         String?
+  triggerSummary      String?
+  notionalUsd         String?
+  expectedSlippageBps Int?
+  marketSnapshot      Json?
+  execution           Execution?
+  createdAt           DateTime      @default(now())
 
   @@index([agentId, status])
   @@index([strategyId])
@@ -96,18 +109,18 @@ model Proposal {
 }
 
 model Execution {
-  id          String         @id @default(uuid())
-  agentId     String
-  agent       Agent          @relation(fields: [agentId], references: [id])
-  strategyId  String
-  strategy    AgentStrategy  @relation(fields: [strategyId], references: [id])
-  proposalId  String?        @unique
-  proposal    Proposal?      @relation(fields: [proposalId], references: [id])
-  txHash      String
-  amountIn    String
-  amountOut   String
-  status      String         @default("pending")
-  executedAt  DateTime       @default(now())
+  id         String        @id @default(uuid())
+  agentId    String
+  agent      Agent         @relation(fields: [agentId], references: [id])
+  strategyId String
+  strategy   AgentStrategy @relation(fields: [strategyId], references: [id])
+  proposalId String?       @unique
+  proposal   Proposal?     @relation(fields: [proposalId], references: [id])
+  txHash     String
+  amountIn   String
+  amountOut  String
+  status     String        @default("pending")
+  executedAt DateTime      @default(now())
 
   @@index([agentId])
   @@index([strategyId])

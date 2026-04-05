@@ -63,7 +63,16 @@ export async function POST(
     return E.badRequest('Invalid JSON');
   }
 
-  const { name, tokenIn, tokenOut, amountPerInterval, interval, autoExecute, chainId } = body;
+  const {
+    name, tokenIn, tokenOut, amountPerInterval, interval, autoExecute, chainId,
+    strategyType, targetAllocationBps, rebalanceBandBps, maxSlippageBps,
+    minNotionalUsd, cooldownMinutes,
+  } = body;
+
+  const resolvedType = strategyType ?? 'dca';
+  if (resolvedType !== 'dca' && resolvedType !== 'rebalance') {
+    return E.badRequest('strategyType must be "dca" or "rebalance"');
+  }
 
   if (!name?.trim()) return E.badRequest('name is required');
   if (!isValidAddress(tokenIn)) return E.badRequest('Invalid tokenIn address');
@@ -79,6 +88,15 @@ export async function POST(
     if (BigInt(amountPerInterval) <= BigInt(0)) return E.badRequest('amountPerInterval must be positive');
   } catch {
     return E.badRequest('amountPerInterval must be a valid integer string');
+  }
+
+  if (resolvedType === 'rebalance') {
+    if (targetAllocationBps == null || targetAllocationBps < 0 || targetAllocationBps > 10000) {
+      return E.badRequest('targetAllocationBps must be 0–10000 for rebalance strategies');
+    }
+    if (rebalanceBandBps == null || rebalanceBandBps < 0 || rebalanceBandBps > 5000) {
+      return E.badRequest('rebalanceBandBps must be 0–5000 for rebalance strategies');
+    }
   }
 
   const resolvedChainId = chainId ?? WORLD_CHAIN_ID;
@@ -116,6 +134,12 @@ export async function POST(
       interval,
       autoExecute: autoExecute ?? false,
       status: 'active',
+      strategyType: resolvedType,
+      targetAllocationBps: targetAllocationBps ?? null,
+      rebalanceBandBps: rebalanceBandBps ?? null,
+      maxSlippageBps: maxSlippageBps ?? null,
+      minNotionalUsd: minNotionalUsd ?? null,
+      cooldownMinutes: cooldownMinutes ?? null,
     },
   });
 

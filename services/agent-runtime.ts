@@ -1,8 +1,13 @@
-import { getQuote, resolveQuoteAmountOut } from './uniswap';
+import { evaluateStrategy } from './strategy-evaluator';
+import { getPortfolioSnapshot, getTokenBalances } from './portfolio';
+import { getMarketSnapshot, getPriceFromSnapshot, computeUsdcValue } from './market-snapshot';
+import { getWalletAddress } from './wallet';
 import {
   getAgentStrategies,
   createProposal,
   getRecentProposal,
+  getLastExecutionForStrategy,
+  updateProposalStatus,
 } from '@/lib/agent-service';
 import { db } from '@/lib/db';
 import type { AgentStrategy } from '@/types';
@@ -28,7 +33,6 @@ export async function startAgentLoop(
   if (activeLoops.has(agentId)) return;
   const { runImmediately = true } = options;
 
-  // Register a placeholder so duplicate calls are blocked during the first cycle
   const interval = setInterval(async () => {
     try {
       await runCycle(agentId);
@@ -39,7 +43,6 @@ export async function startAgentLoop(
 
   activeLoops.set(agentId, interval);
 
-  // Run first cycle immediately; if it stops the loop (e.g. agent paused), that's fine
   if (runImmediately) {
     await runCycle(agentId);
   }
@@ -74,13 +77,38 @@ export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
   }
 
   const strategies = await getAgentStrategies(agentId);
+  if (strategies.length === 0) return;
 
-  for (const strategy of strategies) {
-    if (strategy.status !== 'active') continue;
-    if (!(await shouldExecuteNow(strategy))) continue;
+  const walletAddress = (agent.walletAddress || getWalletAddress()) as `0x${string}`;
+  const activeStrategies = strategies.filter(s => s.status === 'active');
+  if (activeStrategies.length === 0) return;
 
+  // Load portfolio and market snapshot once for the entire cycle
+  const market = await getMarketSnapshot(activeStrategies);
+
+  const tokenSet = new Set<string>();
+  for (const s of activeStrategies) {
+    tokenSet.add(s.tokenIn.toLowerCase());
+    tokenSet.add(s.tokenOut.toLowerCase());
+  }
+  const tokens = [...tokenSet];
+
+  const rawBalances = await getTokenBalances(walletAddress, tokens);
+  const usdcValues = new Map<string, bigint>();
+  for (const [token, balance] of rawBalances.entries()) {
+    const price = getPriceFromSnapshot(market, token);
+    if (price) {
+      usdcValues.set(token, computeUsdcValue(balance, price));
+    } else {
+      usdcValues.set(token, BigInt(0));
+    }
+  }
+
+  const portfolio = await getPortfolioSnapshot(walletAddress, tokens, usdcValues);
+
+  for (const strategy of activeStrategies) {
     try {
-      await processStrategy(agentId, strategy, agent.walletAddress);
+      await processStrategy(agentId, strategy, portfolio, market);
     } catch (err) {
       console.error(
         `[agent-runtime] strategy ${strategy.id} failed:`,
@@ -93,7 +121,8 @@ export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
 async function processStrategy(
   agentId: string,
   strategy: AgentStrategy,
-  walletAddress: string,
+  portfolio: Awaited<ReturnType<typeof getPortfolioSnapshot>>,
+  market: Awaited<ReturnType<typeof getMarketSnapshot>>,
 ): Promise<void> {
   // Deduplicate: skip if a pending/approved proposal already exists for this strategy
   const existing = await getRecentProposal(
@@ -103,54 +132,36 @@ async function processStrategy(
   );
   if (existing) return;
 
-  const quote = await getQuote({
-    tokenIn: strategy.tokenIn,
-    tokenOut: strategy.tokenOut,
-    chainId: strategy.chainId,
-    amount: strategy.amountPerInterval,
-  }, { swapper: walletAddress });
+  // Get last execution time for interval checking
+  const lastExecTime = await getLastExecutionForStrategy(strategy.id);
 
-  const estimatedOutput = resolveQuoteAmountOut(quote.quote, strategy.tokenOut);
+  // Evaluate strategy
+  const action = evaluateStrategy(strategy, portfolio, market, lastExecTime);
+  if (!action) return;
 
-  const reasoning = strategy.autoExecute
-    ? `Auto-execute requested for ${strategy.name}, but World Wallet execution still requires confirmation`
-    : `DCA: ${strategy.name} — awaiting approval`;
+  // Update lastTriggeredAt for cooldown tracking
+  await db.agentStrategy.update({
+    where: { id: strategy.id },
+    data: { lastTriggeredAt: new Date() },
+  });
 
+  // All proposals go to pending — World Wallet requires user confirmation
   await createProposal({
     agentId,
     strategyId: strategy.id,
-    type: 'dca_buy',
-    tokenIn: strategy.tokenIn,
-    tokenOut: strategy.tokenOut,
-    amount: strategy.amountPerInterval,
-    estimatedOutput,
-    reasoning,
+    type: action.type,
+    tokenIn: action.tokenIn,
+    tokenOut: action.tokenOut,
+    amount: action.amount,
+    estimatedOutput: action.estimatedOutput,
+    reasoning: action.reasoning,
     status: 'pending',
+    triggerType: action.triggerType,
+    triggerSummary: action.triggerSummary,
+    notionalUsd: action.notionalUsd,
+    expectedSlippageBps: action.expectedSlippageBps,
+    marketSnapshot: action.marketSnapshot,
   });
-}
-
-async function shouldExecuteNow(strategy: AgentStrategy): Promise<boolean> {
-  if (process.env.DEMO_MODE === 'true') return true;
-
-  const intervalMs = INTERVAL_MS[strategy.interval];
-  if (!intervalMs) return true;
-
-  const lastExecTime = await getLastExecutionForStrategy(strategy.id);
-  if (!lastExecTime) return true;
-
-  return Date.now() - lastExecTime.getTime() >= intervalMs;
-}
-
-// TODO: Request P1 to move to lib/agent-service.ts
-async function getLastExecutionForStrategy(
-  strategyId: string,
-): Promise<Date | null> {
-  const execution = await db.execution.findFirst({
-    where: { strategyId },
-    orderBy: { executedAt: 'desc' },
-    select: { executedAt: true },
-  });
-  return execution?.executedAt ?? null;
 }
 
 export function _resetForTesting(): void {}

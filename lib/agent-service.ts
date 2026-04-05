@@ -5,6 +5,7 @@ import type {
   Execution,
   CreateProposalInput,
   SaveExecutionInput,
+  StrategyType,
 } from '@/types';
 import { normalizeSpendLimits } from './spend-limits';
 
@@ -13,12 +14,17 @@ import { normalizeSpendLimits } from './spend-limits';
 interface DbStrategy {
   id: string; agentId: string; name: string; tokenIn: string; tokenOut: string;
   chainId: number; amountPerInterval: string; interval: string; autoExecute: boolean;
-  status: string; createdAt: Date;
+  status: string; strategyType: string; targetAllocationBps: number | null;
+  rebalanceBandBps: number | null; maxSlippageBps: number | null;
+  minNotionalUsd: string | null; cooldownMinutes: number | null;
+  lastTriggeredAt: Date | null; metadata: unknown; createdAt: Date;
 }
 interface DbProposal {
   id: string; agentId: string; strategyId: string; type: string;
   tokenIn: string; tokenOut: string; amount: string; estimatedOutput: string;
-  reasoning: string; status: string; createdAt: Date;
+  reasoning: string; status: string; triggerType: string | null;
+  triggerSummary: string | null; notionalUsd: string | null;
+  expectedSlippageBps: number | null; marketSnapshot: unknown; createdAt: Date;
 }
 interface DbExecution {
   id: string; agentId: string; strategyId: string; proposalId: string | null;
@@ -44,6 +50,14 @@ export function toStrategyResponse(r: DbStrategy): AgentStrategy {
     interval: r.interval as AgentStrategy['interval'],
     autoExecute: r.autoExecute,
     status: r.status as AgentStrategy['status'],
+    strategyType: (r.strategyType ?? 'dca') as StrategyType,
+    targetAllocationBps: r.targetAllocationBps,
+    rebalanceBandBps: r.rebalanceBandBps,
+    maxSlippageBps: r.maxSlippageBps,
+    minNotionalUsd: r.minNotionalUsd,
+    cooldownMinutes: r.cooldownMinutes,
+    lastTriggeredAt: r.lastTriggeredAt?.toISOString() ?? null,
+    metadata: (r.metadata as Record<string, unknown>) ?? {},
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -60,6 +74,11 @@ export function toProposalResponse(r: DbProposal): Proposal {
     estimatedOutput: r.estimatedOutput,
     reasoning: r.reasoning,
     status: r.status as Proposal['status'],
+    triggerType: r.triggerType,
+    triggerSummary: r.triggerSummary,
+    notionalUsd: r.notionalUsd,
+    expectedSlippageBps: r.expectedSlippageBps,
+    marketSnapshot: (r.marketSnapshot as Record<string, unknown>) ?? null,
     createdAt: r.createdAt.toISOString(),
   };
 }

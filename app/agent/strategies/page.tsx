@@ -21,14 +21,18 @@ const TOKEN_PAIRS = [
 ] as const
 
 type Interval = 'hourly' | 'daily' | 'weekly'
+type StrategyType = 'dca' | 'rebalance'
 
 export default function StrategiesPage() {
   const router = useRouter()
   const { agentId, hydrated, isResolving } = useAgentId()
+  const [strategyType, setStrategyType] = useState<StrategyType>('dca')
   const [tokenIn, setTokenIn] = useState<string>(TOKEN_PAIRS[0].tokenIn)
   const [tokenOut, setTokenOut] = useState<string>(TOKEN_PAIRS[0].tokenOut)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
+  const [targetAllocation, setTargetAllocation] = useState('60')
+  const [rebalanceBand, setRebalanceBand] = useState('5')
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -48,18 +52,27 @@ export default function StrategiesPage() {
       }
 
       const amountRaw = toTokenAmount(amount, tokenIn)
+      const namePrefix = strategyType === 'rebalance' ? 'Rebalance' : `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`
+
+      const body: Record<string, unknown> = {
+        name: namePrefix,
+        tokenIn,
+        tokenOut,
+        chainId: WORLD_CHAIN_ID,
+        amountPerInterval: amountRaw,
+        interval,
+        autoExecute: false,
+        strategyType,
+      }
+
+      if (strategyType === 'rebalance') {
+        body.targetAllocationBps = Math.round(parseFloat(targetAllocation) * 100)
+        body.rebalanceBandBps = Math.round(parseFloat(rebalanceBand) * 100)
+      }
 
       await fetchJson(`/api/agents/${agentId}/strategies`, {
         method: 'POST',
-        body: JSON.stringify({
-          name: `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`,
-          tokenIn,
-          tokenOut,
-          chainId: WORLD_CHAIN_ID,
-          amountPerInterval: amountRaw,
-          interval,
-          autoExecute: false,
-        }),
+        body: JSON.stringify(body),
       })
 
       setStatus('done')
@@ -108,6 +121,32 @@ export default function StrategiesPage() {
       <p className="text-sm text-stone-500 mb-6">Define when and how your agent trades.</p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Strategy Type Selector */}
+        <div>
+          <label className="block text-sm font-medium text-stone-700 mb-2">Strategy Type</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setStrategyType('dca')}
+              className={`py-3 rounded-xl text-sm font-medium border transition-all ${
+                strategyType === 'dca' ? 'border-black bg-black text-white' : 'border-stone-200 bg-white text-stone-700'
+              }`}
+            >
+              DCA
+            </button>
+            <button
+              type="button"
+              onClick={() => setStrategyType('rebalance')}
+              className={`py-3 rounded-xl text-sm font-medium border transition-all ${
+                strategyType === 'rebalance' ? 'border-black bg-black text-white' : 'border-stone-200 bg-white text-stone-700'
+              }`}
+            >
+              Rebalance
+            </button>
+          </div>
+        </div>
+
+        {/* Token Pair */}
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-2">Token Pair</label>
           <div className="flex items-center gap-2">
@@ -138,9 +177,10 @@ export default function StrategiesPage() {
           </div>
         </div>
 
+        {/* Amount */}
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-1">
-            Amount per trade ({tokenInSymbol})
+            {strategyType === 'rebalance' ? `Reference amount (${tokenInSymbol})` : `Amount per trade (${tokenInSymbol})`}
           </label>
           <input
             type="number"
@@ -152,10 +192,16 @@ export default function StrategiesPage() {
             required
             className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-black"
           />
+          {strategyType === 'rebalance' && (
+            <p className="text-xs text-stone-400 mt-1">Used for quote validation. Actual trade size is computed from drift.</p>
+          )}
         </div>
 
+        {/* Frequency */}
         <div>
-          <label className="block text-sm font-medium text-stone-700 mb-2">Frequency</label>
+          <label className="block text-sm font-medium text-stone-700 mb-2">
+            {strategyType === 'rebalance' ? 'Check Frequency' : 'Frequency'}
+          </label>
           <div className="grid grid-cols-3 gap-2">
             {(['hourly', 'daily', 'weekly'] as Interval[]).map(iv => (
               <button
@@ -172,6 +218,50 @@ export default function StrategiesPage() {
           </div>
         </div>
 
+        {/* Rebalance-specific fields */}
+        {strategyType === 'rebalance' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">
+                Target Allocation ({tokenSymbol(tokenOut)})
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={targetAllocation}
+                  onChange={e => setTargetAllocation(e.target.value)}
+                  min="1"
+                  max="99"
+                  step="1"
+                  required
+                  className="flex-1 px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                />
+                <span className="text-stone-500 font-medium">%</span>
+              </div>
+              <p className="text-xs text-stone-400 mt-1">Target portfolio share for {tokenSymbol(tokenOut)}.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Rebalance Band</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={rebalanceBand}
+                  onChange={e => setRebalanceBand(e.target.value)}
+                  min="0.5"
+                  max="50"
+                  step="0.5"
+                  required
+                  className="flex-1 px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                />
+                <span className="text-stone-500 font-medium">%</span>
+              </div>
+              <p className="text-xs text-stone-400 mt-1">How far allocation must drift before a rebalance is proposed.</p>
+            </div>
+          </>
+        )}
+
+        {/* Auto-execute */}
         <div className="bg-white rounded-xl border border-stone-200 p-4">
           <div className="flex items-center justify-between">
             <div className="pr-4">

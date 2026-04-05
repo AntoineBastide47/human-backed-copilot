@@ -12,6 +12,14 @@ export interface ProposalCardProps {
   rejectingId: string | null
 }
 
+function formatUsdcDisplay(raw: string): string {
+  const value = BigInt(raw)
+  const whole = value / BigInt(1_000_000)
+  const fraction = (value % BigInt(1_000_000)).toString().padStart(6, '0').slice(0, 2)
+  if (fraction === '00') return `$${whole.toString()}`
+  return `$${whole.toString()}.${fraction}`
+}
+
 export function ProposalCard({
   proposal,
   onApprove,
@@ -33,6 +41,13 @@ export function ProposalCard({
     : null
 
   const typeIcon = proposal.type === 'dca_buy' ? 'show_chart' : 'balance'
+
+  const snapshot = proposal.marketSnapshot as {
+    currentAllocationBps?: number
+    targetAllocationBps?: number
+    driftBps?: number
+    quotedAt?: string
+  } | null
 
   return (
     <div className="bg-surface-container-lowest rounded-xl p-6 shadow-[0_4px_24px_rgba(38,52,61,0.04)] outline outline-1 outline-outline-variant/10 relative overflow-hidden">
@@ -72,6 +87,40 @@ export function ProposalCard({
         </div>
       </div>
 
+      {/* Trigger Summary */}
+      {proposal.triggerSummary && (
+        <div data-testid="trigger-summary" className="mb-4 px-3 py-2 bg-secondary-container/30 rounded-lg">
+          <p className="text-xs font-semibold text-secondary flex items-center gap-1">
+            <span className="material-symbols-outlined text-xs">bolt</span>
+            {proposal.triggerSummary}
+          </p>
+        </div>
+      )}
+
+      {/* Allocation Drift (rebalance only) */}
+      {snapshot?.currentAllocationBps != null && snapshot?.targetAllocationBps != null && (
+        <div data-testid="allocation-drift" className="mb-4 grid grid-cols-3 gap-2 text-center">
+          <div className="bg-surface-container-low rounded-lg p-2">
+            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Current</p>
+            <p className="text-sm font-extrabold text-on-surface">{(snapshot.currentAllocationBps / 100).toFixed(1)}%</p>
+          </div>
+          <div className="bg-surface-container-low rounded-lg p-2">
+            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Target</p>
+            <p className="text-sm font-extrabold text-on-surface">{(snapshot.targetAllocationBps / 100).toFixed(1)}%</p>
+          </div>
+          <div className="bg-surface-container-low rounded-lg p-2">
+            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Drift</p>
+            <p className={`text-sm font-extrabold ${
+              snapshot.driftBps != null && Math.abs(snapshot.driftBps) > 500
+                ? 'text-error'
+                : 'text-on-surface'
+            }`}>
+              {snapshot.driftBps != null ? `${snapshot.driftBps > 0 ? '+' : ''}${(snapshot.driftBps / 100).toFixed(1)}%` : '—'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Amounts */}
       <div className="grid grid-cols-2 gap-4 mb-5">
         <div className="bg-surface-container-low rounded-lg p-3">
@@ -98,6 +147,14 @@ export function ProposalCard({
         </div>
       </div>
 
+      {/* Notional USD */}
+      {proposal.notionalUsd && (
+        <div data-testid="notional-usd" className="mb-4 flex items-center gap-2">
+          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Notional:</span>
+          <span className="text-sm font-bold text-on-surface">{formatUsdcDisplay(proposal.notionalUsd)}</span>
+        </div>
+      )}
+
       {/* Reasoning */}
       <div className="mb-5 p-4 bg-surface-container-low/50 rounded-lg border-l-4 border-secondary/30">
         <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-1 flex items-center gap-1">
@@ -108,6 +165,13 @@ export function ProposalCard({
           {proposal.reasoning}
         </p>
       </div>
+
+      {/* Quote timestamp */}
+      {snapshot?.quotedAt && (
+        <p data-testid="quote-timestamp" className="text-[10px] text-on-surface-variant/60 mb-3">
+          Quote: {formatDistanceToNow(new Date(snapshot.quotedAt), { addSuffix: true })}
+        </p>
+      )}
 
       {/* Tx link */}
       {proposal.txHash && (
