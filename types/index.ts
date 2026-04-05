@@ -1,5 +1,7 @@
 import type { TypedDataDomain, TypedDataParameter } from 'viem';
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Shared types — P1 is the SOLE editor of this file.
 // P0 and P2: request additions in the group chat, do not edit directly.
@@ -79,7 +81,7 @@ export interface Proposal {
   triggerSummary: string | null;
   notionalUsd: string | null;
   expectedSlippageBps: number | null;
-  marketSnapshot: Record<string, unknown> | null;
+  marketSnapshot: { [key: string]: JsonValue } | null;
   createdAt: string;
 }
 
@@ -108,7 +110,7 @@ export interface EvaluatorAction {
   triggerSummary: string;
   reasoning: string;
   expectedSlippageBps?: number;
-  marketSnapshot: Record<string, unknown>;
+  marketSnapshot: { [key: string]: JsonValue };
 }
 
 // ── Portfolio ──
@@ -223,7 +225,7 @@ export interface CreateProposalInput {
   triggerSummary?: string;
   notionalUsd?: string;
   expectedSlippageBps?: number;
-  marketSnapshot?: Record<string, unknown>;
+  marketSnapshot?: { [key: string]: JsonValue };
 }
 export interface SaveExecutionInput {
   agentId: string;
