@@ -78,7 +78,7 @@ export function toProposalResponse(r: DbProposal): Proposal {
     triggerSummary: r.triggerSummary,
     notionalUsd: r.notionalUsd,
     expectedSlippageBps: r.expectedSlippageBps,
-    marketSnapshot: (r.marketSnapshot as Record<string, unknown>) ?? null,
+    marketSnapshot: (r.marketSnapshot as Proposal['marketSnapshot']) ?? null,
     createdAt: r.createdAt.toISOString(),
   };
 }
