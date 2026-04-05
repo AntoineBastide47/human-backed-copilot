@@ -1,6 +1,7 @@
 import { evaluateStrategy } from './strategy-evaluator';
 import { getPortfolioSnapshot, getTokenBalances } from './portfolio';
 import { getMarketSnapshot, getPriceFromSnapshot, computeUsdcValue } from './market-snapshot';
+import { getQuote, resolveQuoteAmountOut } from './uniswap';
 import { getWalletAddress } from './wallet';
 import {
   getAgentStrategies,
@@ -84,7 +85,7 @@ export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
   if (activeStrategies.length === 0) return;
 
   // Load portfolio and market snapshot once for the entire cycle
-  const market = await getMarketSnapshot(activeStrategies);
+  const market = await getMarketSnapshot(activeStrategies, walletAddress);
 
   const tokenSet = new Set<string>();
   for (const s of activeStrategies) {
@@ -108,7 +109,7 @@ export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
 
   for (const strategy of activeStrategies) {
     try {
-      await processStrategy(agentId, strategy, portfolio, market);
+      await processStrategy(agentId, strategy, walletAddress, portfolio, market);
     } catch (err) {
       console.error(
         `[agent-runtime] strategy ${strategy.id} failed:`,
@@ -121,6 +122,7 @@ export async function syncAgentProposalsOnce(agentId: string): Promise<void> {
 async function processStrategy(
   agentId: string,
   strategy: AgentStrategy,
+  walletAddress: string,
   portfolio: Awaited<ReturnType<typeof getPortfolioSnapshot>>,
   market: Awaited<ReturnType<typeof getMarketSnapshot>>,
 ): Promise<void> {
@@ -139,6 +141,23 @@ async function processStrategy(
   const action = evaluateStrategy(strategy, portfolio, market, lastExecTime);
   if (!action) return;
 
+  // Get real estimated output from Uniswap quote (the evaluator's estimate is approximate)
+  let estimatedOutput = action.estimatedOutput;
+  try {
+    const quote = await getQuote({
+      tokenIn: action.tokenIn,
+      tokenOut: action.tokenOut,
+      chainId: strategy.chainId,
+      amount: action.amount,
+    }, { swapper: walletAddress });
+    const realOutput = resolveQuoteAmountOut(quote.quote, action.tokenOut);
+    if (realOutput !== '0') {
+      estimatedOutput = realOutput;
+    }
+  } catch (err) {
+    console.error(`[agent-runtime] quote for real estimate failed, using evaluator estimate:`, err);
+  }
+
   // Update lastTriggeredAt for cooldown tracking
   await db.agentStrategy.update({
     where: { id: strategy.id },
@@ -153,7 +172,7 @@ async function processStrategy(
     tokenIn: action.tokenIn,
     tokenOut: action.tokenOut,
     amount: action.amount,
-    estimatedOutput: action.estimatedOutput,
+    estimatedOutput,
     reasoning: action.reasoning,
     status: 'pending',
     triggerType: action.triggerType,

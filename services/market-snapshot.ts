@@ -23,6 +23,7 @@ function cacheKey(token: string): string {
 export async function getTokenUsdcPrice(
   token: string,
   chainId: number,
+  swapper?: string,
 ): Promise<TokenPrice> {
   const key = cacheKey(token);
   const usdcLower = WORLD_USDC.toLowerCase();
@@ -45,12 +46,13 @@ export async function getTokenUsdcPrice(
   const decimals = getTokenDecimals(token);
   const oneUnit = BigInt(10) ** BigInt(decimals);
 
+  const opts = swapper ? { swapper } : {};
   const quoteResult = await getQuote({
     tokenIn: token,
     tokenOut: WORLD_USDC,
     chainId,
     amount: oneUnit.toString(),
-  });
+  }, opts);
 
   const output = resolveQuoteAmountOut(quoteResult.quote, WORLD_USDC);
 
@@ -84,6 +86,7 @@ export function computeUsdcValue(
  */
 export async function getMarketSnapshot(
   strategies: AgentStrategy[],
+  swapper?: string,
 ): Promise<MarketSnapshotData> {
   const tokenSet = new Set<string>();
   for (const s of strategies) {
@@ -95,7 +98,7 @@ export async function getMarketSnapshot(
   const tokens = [...tokenSet];
 
   const prices = await Promise.all(
-    tokens.map(token => getTokenUsdcPrice(token, chainId)),
+    tokens.map(token => getTokenUsdcPrice(token, chainId, swapper)),
   );
 
   return {
