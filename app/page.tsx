@@ -34,7 +34,7 @@ export default function HomePage() {
             { icon: 'verified_user', text: 'One unique human per agent — bots blocked' },
             { icon: 'swap_horiz', text: 'DCA & rebalance strategies on World Chain' },
             { icon: 'how_to_vote', text: 'Human approval required for every trade' },
-            { icon: 'badge', text: 'ENS subname for your agent (*.copilot.eth)' },
+            { icon: 'badge', text: 'ENS subname for your agent (*.provix.eth)' },
           ].map(({ icon, text }) => (
             <li key={text} className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
