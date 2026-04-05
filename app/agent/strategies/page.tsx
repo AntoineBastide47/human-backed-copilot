@@ -51,8 +51,11 @@ export default function StrategiesPage() {
         return
       }
 
-      const amountRaw = toTokenAmount(amount, tokenIn)
-      const namePrefix = strategyType === 'rebalance' ? 'Rebalance' : `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`
+      const isRebalance = strategyType === 'rebalance'
+      const amountRaw = isRebalance ? '0' : toTokenAmount(amount, tokenIn)
+      const namePrefix = isRebalance
+        ? `Rebalance ${tokenSymbol(tokenOut)}`
+        : `${interval.charAt(0).toUpperCase() + interval.slice(1)} ${tokenInSymbol} DCA`
 
       const body: Record<string, unknown> = {
         name: namePrefix,
@@ -60,12 +63,12 @@ export default function StrategiesPage() {
         tokenOut,
         chainId: WORLD_CHAIN_ID,
         amountPerInterval: amountRaw,
-        interval,
+        interval: isRebalance ? 'daily' : interval,
         autoExecute: false,
         strategyType,
       }
 
-      if (strategyType === 'rebalance') {
+      if (isRebalance) {
         body.targetAllocationBps = Math.round(parseFloat(targetAllocation) * 100)
         body.rebalanceBandBps = Math.round(parseFloat(rebalanceBand) * 100)
       }
@@ -177,46 +180,45 @@ export default function StrategiesPage() {
           </div>
         </div>
 
-        {/* Amount */}
-        <div>
-          <label className="block text-sm font-medium text-stone-700 mb-1">
-            {strategyType === 'rebalance' ? `Reference amount (${tokenInSymbol})` : `Amount per trade (${tokenInSymbol})`}
-          </label>
-          <input
-            type="number"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="0.5"
-            step="any"
-            min="0"
-            required
-            className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-black"
-          />
-          {strategyType === 'rebalance' && (
-            <p className="text-xs text-stone-400 mt-1">Used for quote validation. Actual trade size is computed from drift.</p>
-          )}
-        </div>
-
-        {/* Frequency */}
-        <div>
-          <label className="block text-sm font-medium text-stone-700 mb-2">
-            {strategyType === 'rebalance' ? 'Check Frequency' : 'Frequency'}
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['hourly', 'daily', 'weekly'] as Interval[]).map(iv => (
-              <button
-                key={iv}
-                type="button"
-                onClick={() => setInterval(iv)}
-                className={`py-3 rounded-xl text-sm font-medium border transition-all capitalize ${
-                  interval === iv ? 'border-black bg-black text-white' : 'border-stone-200 bg-white text-stone-700'
-                }`}
-              >
-                {iv}
-              </button>
-            ))}
+        {/* Amount (DCA only) */}
+        {strategyType === 'dca' && (
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-1">
+              Amount per trade ({tokenInSymbol})
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder="0.5"
+              step="any"
+              min="0"
+              required
+              className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            />
           </div>
-        </div>
+        )}
+
+        {/* Frequency (DCA only) */}
+        {strategyType === 'dca' && (
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Frequency</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['hourly', 'daily', 'weekly'] as Interval[]).map(iv => (
+                <button
+                  key={iv}
+                  type="button"
+                  onClick={() => setInterval(iv)}
+                  className={`py-3 rounded-xl text-sm font-medium border transition-all capitalize ${
+                    interval === iv ? 'border-black bg-black text-white' : 'border-stone-200 bg-white text-stone-700'
+                  }`}
+                >
+                  {iv}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Rebalance-specific fields */}
         {strategyType === 'rebalance' && (
