@@ -47,6 +47,9 @@ vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
   WORLD_ID_ACTION: 'register-agent',
 }));
+vi.mock('@/lib/ens', () => ({
+  registerAgentENS: vi.fn().mockResolvedValue('agent-bbbbbb.provix.eth'),
+}));
 
 import { GET as getAgents, POST as postAgent } from '@/app/api/agents/route';
 import { GET as getAgent, PATCH as patchAgent, DELETE as deleteAgent } from '@/app/api/agents/[id]/route';
@@ -227,6 +230,82 @@ describe('POST /api/agents', () => {
     expect(res.status).toBe(403);
     const data = await json<{ error: string }>(res);
     expect(data.error).toContain('agentkit-cli register');
+  });
+
+  it('fires ENS registration with wallet from verified user', async () => {
+    const { registerAgentENS } = await import('@/lib/ens');
+    process.env.JUSTANAME_API_KEY = 'test-key';
+
+    await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }));
+
+    // Let the fire-and-forget microtask queue drain
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(vi.mocked(registerAgentENS)).toHaveBeenCalledWith(
+      dbUser.walletAddress,
+      expect.objectContaining({
+        strategy: 'dca',
+        worldIdVerified: true,
+        owner: dbUser.walletAddress,
+      }),
+    );
+
+    delete process.env.JUSTANAME_API_KEY;
+  });
+
+  it('persists ENS name to agent after successful registration', async () => {
+    process.env.JUSTANAME_API_KEY = 'test-key';
+
+    await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }));
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(mockAgentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: dbAgent.id },
+        data: { ensName: 'agent-bbbbbb.provix.eth' },
+      }),
+    );
+
+    delete process.env.JUSTANAME_API_KEY;
+  });
+
+  it('agent creation succeeds even when ENS registration throws', async () => {
+    const { registerAgentENS } = await import('@/lib/ens');
+    vi.mocked(registerAgentENS).mockRejectedValueOnce(new Error('JustaName timeout'));
+    process.env.JUSTANAME_API_KEY = 'test-key';
+
+    const res = await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }));
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(res.status).toBe(201);
+
+    delete process.env.JUSTANAME_API_KEY;
+  });
+
+  it('skips ENS registration when no JUSTANAME_API_KEY or L2_REGISTRAR_ADDRESS', async () => {
+    const { registerAgentENS } = await import('@/lib/ens');
+    delete process.env.JUSTANAME_API_KEY;
+    delete process.env.L2_REGISTRAR_ADDRESS;
+
+    await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }));
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(vi.mocked(registerAgentENS)).not.toHaveBeenCalled();
   });
 });
 

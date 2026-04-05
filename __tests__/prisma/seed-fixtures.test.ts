@@ -70,8 +70,8 @@ describe('DEMO_AGENT', () => {
     );
   });
 
-  it('ensName ends with .copilot.eth', () => {
-    expect(DEMO_AGENT.ensName).toMatch(/\.copilot\.eth$/);
+  it('ensName ends with .provix.eth', () => {
+    expect(DEMO_AGENT.ensName).toMatch(/\.provix\.eth$/);
   });
 });
 
