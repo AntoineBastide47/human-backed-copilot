@@ -36,24 +36,22 @@ export async function getTokenBalances(
   const publicClient = getPublicClient();
   const uniqueTokens = [...new Set(tokens.map(t => t.toLowerCase()))];
 
-  const results = await publicClient.multicall({
-    contracts: uniqueTokens.map(token => ({
-      address: token as `0x${string}`,
-      abi: ERC20_BALANCE_ABI,
-      functionName: 'balanceOf',
-      args: [walletAddress],
-    })),
-  });
-
   const balances = new Map<string, bigint>();
-  for (let i = 0; i < uniqueTokens.length; i++) {
-    const result = results[i];
-    if (result.status === 'success') {
-      balances.set(uniqueTokens[i], result.result as bigint);
-    } else {
-      balances.set(uniqueTokens[i], BigInt(0));
-    }
-  }
+  await Promise.all(
+    uniqueTokens.map(async (token) => {
+      try {
+        const balance = await publicClient.readContract({
+          address: token as `0x${string}`,
+          abi: ERC20_BALANCE_ABI,
+          functionName: 'balanceOf',
+          args: [walletAddress],
+        });
+        balances.set(token, balance as bigint);
+      } catch {
+        balances.set(token, BigInt(0));
+      }
+    }),
+  );
   return balances;
 }
 
