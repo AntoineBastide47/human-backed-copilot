@@ -1,6 +1,7 @@
 import type {
   AgentStrategy,
   EvaluatorAction,
+  JsonValue,
   PortfolioSnapshot,
   MarketSnapshotData,
 } from '@/types';
@@ -228,7 +229,7 @@ function buildMarketSnapshotPayload(
   strategy: AgentStrategy,
   portfolio: PortfolioSnapshot,
   market: MarketSnapshotData,
-): Record<string, unknown> {
+): { [key: string]: JsonValue } {
   const tokenInLower = strategy.tokenIn.toLowerCase();
   const tokenOutLower = strategy.tokenOut.toLowerCase();
   const tokenInBalance = portfolio.balances.find(b => b.token === tokenInLower);
