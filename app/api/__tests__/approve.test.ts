@@ -216,4 +216,52 @@ describe('POST /api/agents/[id]/approve', () => {
     const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
     expect(res.status).toBe(200);
   });
+
+  it('treats legacy default spend limits as $1,000 / $5,000 caps', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000', dailyCap: '5000000' } },
+    } as never);
+
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(200);
+  });
+
+  it('prefers structured notionalUsd for spend-limit enforcement when present', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      notionalUsd: '1500000000', // $1500
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000' } }, // $1000 limit
+    } as never);
+
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(400);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('maxPerTx');
+  });
+
+  it('passes spend-limit check when notionalUsd is within limit', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      notionalUsd: '500000000', // $500
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000' } }, // $1000 limit
+    } as never);
+
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(200);
+  });
+
+  it('falls back to heuristic when notionalUsd is not present', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...pendingProposal,
+      notionalUsd: null,
+      estimatedOutput: '1250000000', // $1250 USDC output
+      agent: { ...activeAgent, spendLimits: { maxPerTx: '1000000000' } },
+    } as never);
+
+    const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
+    expect(res.status).toBe(400);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('$1250');
+  });
 });

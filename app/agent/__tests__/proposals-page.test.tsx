@@ -73,6 +73,47 @@ const pendingProposal = {
   estimatedOutput: '925000000',
   reasoning: 'DCA buy',
   status: 'pending' as const,
+  triggerType: null,
+  triggerSummary: null,
+  notionalUsd: null,
+  expectedSlippageBps: null,
+  marketSnapshot: null,
+  createdAt: new Date().toISOString(),
+}
+
+const richProposal = {
+  ...pendingProposal,
+  id: 'prop-rich',
+  type: 'rebalance' as const,
+  triggerType: 'rebalance_drift',
+  triggerSummary: 'Portfolio drift exceeded 5.00% rebalance band',
+  notionalUsd: '1500000000',
+  expectedSlippageBps: 50,
+  marketSnapshot: {
+    currentAllocationBps: 6800,
+    targetAllocationBps: 6000,
+    driftBps: 800,
+    quotedAt: new Date().toISOString(),
+  },
+  reasoning: 'USDC allocation is 68.0%, target is 60.0%, drift of 8.0%. Selling USDC for WETH.',
+}
+
+const oldProposal = {
+  id: 'prop-old',
+  agentId: 'agent-123',
+  strategyId: 'strategy-1',
+  type: 'dca_buy' as const,
+  tokenIn: WETH,
+  tokenOut: USDC,
+  amount: '500000000000000000',
+  estimatedOutput: '925000000',
+  reasoning: 'Legacy DCA buy',
+  status: 'pending' as const,
+  triggerType: null,
+  triggerSummary: null,
+  notionalUsd: null,
+  expectedSlippageBps: null,
+  marketSnapshot: null,
   createdAt: new Date().toISOString(),
 }
 
@@ -283,5 +324,45 @@ describe('ProposalsPage', () => {
     expect(screen.getByText(new RegExp(`Token in: ${WETH}`))).toBeTruthy()
     expect(screen.getByText(/Permit2 allowance: 0/)).toBeTruthy()
     expect(screen.getByText(new RegExp(WETH))).toBeTruthy()
+  })
+
+  // ── Phase 3: structured proposal metadata ───────────────────────────
+
+  it('shows trigger summary when present', async () => {
+    swrState.data = [richProposal]
+    await renderPage()
+    expect(screen.getByTestId('trigger-summary')).toBeTruthy()
+    expect(screen.getByText(/Portfolio drift exceeded/)).toBeTruthy()
+  })
+
+  it('shows allocation drift when marketSnapshot has allocation data', async () => {
+    swrState.data = [richProposal]
+    await renderPage()
+    expect(screen.getByTestId('allocation-drift')).toBeTruthy()
+    expect(screen.getByText('68.0%')).toBeTruthy()
+    expect(screen.getByText('60.0%')).toBeTruthy()
+  })
+
+  it('shows notional USD when present', async () => {
+    swrState.data = [richProposal]
+    await renderPage()
+    expect(screen.getByTestId('notional-usd')).toBeTruthy()
+    expect(screen.getByText('$1500')).toBeTruthy()
+  })
+
+  it('gracefully renders old proposals without new fields', async () => {
+    swrState.data = [oldProposal]
+    await renderPage()
+    expect(screen.getByText('Legacy DCA buy')).toBeTruthy()
+    expect(screen.queryByTestId('trigger-summary')).toBeNull()
+    expect(screen.queryByTestId('allocation-drift')).toBeNull()
+    expect(screen.queryByTestId('notional-usd')).toBeNull()
+  })
+
+  it('renders mixed old and new proposals together', async () => {
+    swrState.data = [richProposal, oldProposal]
+    await renderPage()
+    expect(screen.getByText(/Portfolio drift exceeded/)).toBeTruthy()
+    expect(screen.getByText('Legacy DCA buy')).toBeTruthy()
   })
 })

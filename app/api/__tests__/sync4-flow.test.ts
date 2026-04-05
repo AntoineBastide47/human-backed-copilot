@@ -145,13 +145,19 @@ const dbAgent = {
 const dbStrategy = {
   id: 's1', agentId: 'a1', name: 'Daily DCA', tokenIn: TOKEN_IN, tokenOut: TOKEN_OUT,
   chainId: 480, amountPerInterval: '1000000', interval: 'daily',
-  autoExecute: false, status: 'active', createdAt: now,
+  autoExecute: false, status: 'active', strategyType: 'dca',
+  targetAllocationBps: null, rebalanceBandBps: null, maxSlippageBps: null,
+  minNotionalUsd: null, cooldownMinutes: null, lastTriggeredAt: null,
+  metadata: {}, createdAt: now,
 };
 const dbProposal = {
   id: 'p1', agentId: 'a1', strategyId: 's1', type: 'dca_buy',
   tokenIn: TOKEN_IN, tokenOut: TOKEN_OUT, amount: '1000000',
   estimatedOutput: '900000000000000', reasoning: 'DCA interval reached',
-  status: 'pending', createdAt: now,
+  status: 'pending', triggerType: 'interval_due',
+  triggerSummary: 'daily DCA interval reached',
+  notionalUsd: '1000000', expectedSlippageBps: null,
+  marketSnapshot: null, createdAt: now,
   agent: dbAgent,
 };
 const dbExecution = {
@@ -246,10 +252,38 @@ describe('Sync #4 — full backend gate', () => {
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(201);
-    const body = await json<{ agentId: string; chainId: number; tokenIn: string }>(res);
+    const body = await json<{ agentId: string; chainId: number; tokenIn: string; strategyType: string }>(res);
     expect(body.agentId).toBe('a1');
     expect(body.chainId).toBe(480);
     expect(body.tokenIn).toBe(TOKEN_IN);
+    expect(body.strategyType).toBe('dca');
+  });
+
+  // Step 3b ── Create rebalance strategy with target allocation
+  it('step 3b: POST /api/agents/[id]/strategies accepts rebalance strategy', async () => {
+    const rebalanceStrategy = {
+      ...dbStrategy,
+      strategyType: 'rebalance',
+      targetAllocationBps: 6000,
+      rebalanceBandBps: 500,
+    };
+    mockStrategyCreate.mockResolvedValue(rebalanceStrategy as never);
+
+    const res = await postStrategy(
+      postReq('http://localhost/api/agents/a1/strategies', {
+        name: 'WETH/USDC Rebalance', tokenIn: TOKEN_IN, tokenOut: TOKEN_OUT,
+        amountPerInterval: '1000000', interval: 'daily',
+        strategyType: 'rebalance',
+        targetAllocationBps: 6000,
+        rebalanceBandBps: 500,
+      }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(201);
+    const body = await json<{ strategyType: string; targetAllocationBps: number; rebalanceBandBps: number }>(res);
+    expect(body.strategyType).toBe('rebalance');
+    expect(body.targetAllocationBps).toBe(6000);
+    expect(body.rebalanceBandBps).toBe(500);
   });
 
   // Step 4 ── Fetch pending proposals → returns proposal list
