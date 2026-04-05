@@ -79,15 +79,17 @@ export async function POST(
   if (!isValidAddress(tokenOut)) return E.badRequest('Invalid tokenOut address');
   if (tokenIn.toLowerCase() === tokenOut.toLowerCase()) return E.badRequest('tokenIn and tokenOut must differ');
   if (!VALID_INTERVALS.has(interval)) return E.badRequest('interval must be hourly, daily, or weekly');
-  if (!amountPerInterval) return E.badRequest('amountPerInterval is required');
   if (autoExecute) {
     return E.badRequest('Auto-execute is unavailable when trades must be signed by the World Wallet');
   }
 
-  try {
-    if (BigInt(amountPerInterval) <= BigInt(0)) return E.badRequest('amountPerInterval must be positive');
-  } catch {
-    return E.badRequest('amountPerInterval must be a valid integer string');
+  if (resolvedType === 'dca') {
+    if (!amountPerInterval) return E.badRequest('amountPerInterval is required');
+    try {
+      if (BigInt(amountPerInterval) <= BigInt(0)) return E.badRequest('amountPerInterval must be positive');
+    } catch {
+      return E.badRequest('amountPerInterval must be a valid integer string');
+    }
   }
 
   if (resolvedType === 'rebalance') {
@@ -102,25 +104,27 @@ export async function POST(
   const resolvedChainId = chainId ?? WORLD_CHAIN_ID;
   if (resolvedChainId !== WORLD_CHAIN_ID) return E.badRequest(`Only World Chain (${WORLD_CHAIN_ID}) is supported`);
 
-  try {
-    const quote = await getQuote({
-      tokenIn,
-      tokenOut,
-      chainId: resolvedChainId,
-      amount: amountPerInterval,
-    }, { swapper: agent.walletAddress });
+  if (resolvedType === 'dca') {
+    try {
+      const quote = await getQuote({
+        tokenIn,
+        tokenOut,
+        chainId: resolvedChainId,
+        amount: amountPerInterval,
+      }, { swapper: agent.walletAddress });
 
-    if (quote.txFailureReason) {
-      return E.badRequest(`Strategy is not quotable right now: ${quote.txFailureReason}`);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('No quotes available') || message.includes('ResourceNotFound')) {
-      return E.badRequest('No Uniswap quote is available for this token pair and amount on World Chain');
-    }
+      if (quote.txFailureReason) {
+        return E.badRequest(`Strategy is not quotable right now: ${quote.txFailureReason}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('No quotes available') || message.includes('ResourceNotFound')) {
+        return E.badRequest('No Uniswap quote is available for this token pair and amount on World Chain');
+      }
 
-    console.error('[strategies] quote validation failed:', err);
-    return E.badRequest('Unable to validate this strategy with Uniswap right now');
+      console.error('[strategies] quote validation failed:', err);
+      return E.badRequest('Unable to validate this strategy with Uniswap right now');
+    }
   }
 
   const strategy = await db.agentStrategy.create({
@@ -130,7 +134,7 @@ export async function POST(
       tokenIn,
       tokenOut,
       chainId: resolvedChainId,
-      amountPerInterval,
+      amountPerInterval: amountPerInterval || '0',
       interval,
       autoExecute: autoExecute ?? false,
       status: 'active',
