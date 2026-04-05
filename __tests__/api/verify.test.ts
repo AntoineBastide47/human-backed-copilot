@@ -147,3 +147,81 @@ describe('POST /api/verify', () => {
     expect(mockVerify).toHaveBeenCalled();
   });
 });
+
+// ── walletAuth flow (MiniKit v2) ───────────────────────────────────────────────
+
+describe('POST /api/verify — walletAuth flow', () => {
+  const WALLET = '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18';
+
+  function walletAuthReq(overrides?: Record<string, unknown>): Request {
+    return req({
+      walletAuth: true,
+      payload: {
+        address: WALLET,
+        message: 'Sign in to Human-Backed Copilot',
+        signature: '0xsig',
+        nonce: 'abc123',
+        ...overrides,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSign.mockResolvedValue('signed-token');
+    mockUpsert.mockResolvedValue(mockUser as never);
+  });
+
+  it('returns 200 with userId, verified=true, and session cookie', async () => {
+    const res = await POST(walletAuthReq());
+    expect(res.status).toBe(200);
+    const data = await json<{ userId: string; verified: boolean; walletAddress: string }>(res);
+    expect(data.verified).toBe(true);
+    expect(data.userId).toBe('user-1');
+    expect(res.headers.get('set-cookie')).toContain('session=');
+  });
+
+  it('upserts user with walletauth_ nullifier derived from wallet address', async () => {
+    await POST(walletAuthReq());
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { nullifierHash: `walletauth_${WALLET.toLowerCase()}` },
+        create: expect.objectContaining({
+          nullifierHash: `walletauth_${WALLET.toLowerCase()}`,
+          walletAddress: WALLET,
+          isVerified: true,
+          verificationLevel: 'orb',
+        }),
+        update: expect.objectContaining({ isVerified: true, walletAddress: WALLET }),
+      }),
+    );
+  });
+
+  it('does NOT call verifyWorldIdProof (SIWE bypasses World ID)', async () => {
+    await POST(walletAuthReq());
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when address is missing', async () => {
+    const res = await POST(walletAuthReq({ address: undefined }));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when address is not a valid EVM address', async () => {
+    const res = await POST(walletAuthReq({ address: 'not-an-address' }));
+    expect(res.status).toBe(400);
+    const data = await json<{ error: string }>(res);
+    expect(data.error).toContain('wallet address');
+  });
+
+  it('returns 400 when nonce is missing', async () => {
+    const res = await POST(walletAuthReq({ nonce: undefined }));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 500 when db.user.upsert throws', async () => {
+    mockUpsert.mockRejectedValueOnce(new Error('DB connection lost'));
+    const res = await POST(walletAuthReq());
+    expect(res.status).toBe(500);
+  });
+});

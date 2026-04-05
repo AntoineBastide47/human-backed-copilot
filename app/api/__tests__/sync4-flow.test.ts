@@ -77,6 +77,9 @@ vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
   WORLD_USDC: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
 }));
+vi.mock('@/lib/ens', () => ({
+  registerAgentENS: vi.fn().mockResolvedValue('agent-aaaaaa.provix.eth'),
+}));
 
 import { POST as verifyHandler } from '@/app/api/verify/route';
 import { POST as postAgent } from '@/app/api/agents/route';
