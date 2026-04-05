@@ -74,6 +74,18 @@ describe('registerAgentENS', () => {
     expect(name).toBe('agent-abcdef.provix.eth');
   });
 
+  it('uses a custom label override when one is provided', async () => {
+    mockAddSubname.mockResolvedValue({});
+    const { registerAgentENS } = await import('@/lib/ens');
+    const name = await registerAgentENS(
+      WALLET,
+      { strategy: 'dca', worldIdVerified: true, owner: '0xowner' },
+      'my-custom-agent',
+    );
+
+    expect(name).toBe('my-custom-agent.provix.eth');
+  });
+
   it('calls JustaName addSubname with correct args (offchain path)', async () => {
     mockAddSubname.mockResolvedValue({});
     const { registerAgentENS } = await import('@/lib/ens');
@@ -90,6 +102,22 @@ describe('registerAgentENS', () => {
           { key: 'worldid',  value: 'verified:orb' },
           { key: 'owner',    value: '0xowner' },
         ]),
+      }),
+    );
+  });
+
+  it('normalizes a full custom ENS name down to its label before registration', async () => {
+    mockAddSubname.mockResolvedValue({});
+    const { registerAgentENS } = await import('@/lib/ens');
+    await registerAgentENS(
+      WALLET,
+      { strategy: 'dca', worldIdVerified: true, owner: '0xowner' },
+      'Desk-Trader.provix.eth',
+    );
+
+    expect(mockAddSubname).toHaveBeenCalledWith(
+      expect.objectContaining({
+        username: 'desk-trader',
       }),
     );
   });

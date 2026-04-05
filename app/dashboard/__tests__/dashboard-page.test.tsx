@@ -39,7 +39,7 @@ const makeAgent = (overrides: Partial<Agent> = {}): Agent => ({
   id: 'agent-123',
   ownerId: 'user-1',
   walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
-  ensName: 'demo.copilot.eth',
+  ensName: 'demo.provix.eth',
   status: 'active',
   usageCount: 5,
   freeTrialRemaining: 3,
@@ -118,14 +118,14 @@ describe('DashboardPage', () => {
   it('shows loading skeleton when agent is loading', async () => {
     agentState.isLoading = true
     await renderPage()
-    expect(screen.queryByText('demo.copilot.eth')).toBeNull()
+    expect(screen.queryByText('demo.provix.eth')).toBeNull()
   })
 
   it('renders agent info for an active agent', async () => {
     agentState.data = makeAgent()
     strategiesState.data = []
     await renderPage()
-    expect(screen.getByText('demo.copilot.eth')).toBeTruthy()
+    expect(screen.getByText('demo.provix.eth')).toBeTruthy()
     expect(screen.getByText('active')).toBeTruthy()
     expect(screen.getByText('5')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
@@ -202,10 +202,10 @@ describe('DashboardPage', () => {
   })
 
   it('shows ENS name when available, not raw address', async () => {
-    agentState.data = makeAgent({ ensName: 'alice-dca.copilot.eth' })
+    agentState.data = makeAgent({ ensName: 'alice-dca.provix.eth' })
     strategiesState.data = []
     await renderPage()
-    expect(screen.getByText('alice-dca.copilot.eth')).toBeTruthy()
+    expect(screen.getByText('alice-dca.provix.eth')).toBeTruthy()
   })
 
   it('falls back to truncated address when ensName is null', async () => {

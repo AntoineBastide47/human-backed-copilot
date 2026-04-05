@@ -54,7 +54,7 @@ const agentState = {
     id: 'agent-123',
     ownerId: 'user-1',
     walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
-    ensName: 'demo.copilot.eth',
+    ensName: 'demo.provix.eth',
     status: 'active',
     usageCount: 1,
     freeTrialRemaining: 2,

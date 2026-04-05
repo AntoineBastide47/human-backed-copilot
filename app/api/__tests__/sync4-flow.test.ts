@@ -76,6 +76,7 @@ vi.mock('@/lib/constants', () => ({
   WORLD_ID_ACTION: 'register-agent',
   WORLD_CHAIN_ID: 480,
   WORLD_USDC: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
+  ENS_PARENT_NAME: 'provix.eth',
 }));
 vi.mock('@/lib/ens', () => ({
   registerAgentENS: vi.fn().mockResolvedValue('agent-aaaaaa.provix.eth'),

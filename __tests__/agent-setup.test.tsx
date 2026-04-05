@@ -16,6 +16,10 @@ vi.mock('@/components/sync4-client', () => ({
   fetchJson: vi.fn(),
 }))
 
+vi.mock('@/lib/constants', () => ({
+  ENS_PARENT_NAME: 'provix.eth',
+}))
+
 vi.mock('@/lib/client-storage', () => ({
   getLocalStorageValue: mockGetLocalStorageValue,
   setLocalStorageValue: vi.fn(),
@@ -109,8 +113,16 @@ describe('AgentSetupPage', () => {
     const input = screen.getByLabelText('World Wallet Address') as HTMLInputElement
     expect(input.value).toBe('0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18')
     expect(input.readOnly).toBe(true)
-    expect(
-      screen.getByText('Locked to the wallet you verified with World App. Fund this wallet with ETH for gas on World Chain.'),
-    ).toBeTruthy()
+  })
+
+  it('shows the default provix.eth label as a gray placeholder suggestion', async () => {
+    const { default: AgentSetupPage } = await import('@/app/agent/setup/page')
+
+    render(<AgentSetupPage />)
+
+    const input = screen.getByLabelText('Agent ENS Name') as HTMLInputElement
+    expect(input.value).toBe('')
+    expect(input.placeholder).toBe('agent-742d35')
+    expect(input.readOnly).toBe(false)
   })
 })

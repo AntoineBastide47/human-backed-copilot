@@ -8,7 +8,7 @@ Built at **ETHGlobal Cannes 2026**.
 
 ## What it does
 
-Users verify their humanity with **World ID**, then register an AI trading agent that proposes DCA and rebalance actions on **World Chain**. Every trade requires explicit human approval before execution. The agent gets an **ENS subname** (`name.copilot.eth`) and is registered on-chain via **World AgentKit**.
+Users verify their humanity with **World ID**, then register an AI trading agent that proposes DCA and rebalance actions on **World Chain**. Every trade requires explicit human approval before execution. The agent gets an **ENS subname** (`name.provix.eth`) and is registered on-chain via **World AgentKit**.
 
 
 ---

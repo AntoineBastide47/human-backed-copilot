@@ -6,6 +6,7 @@ import { toAgentResponse } from '@/lib/agent-service';
 import { verifyAgentIsHuman } from '@/services/agentkit';
 import { DEFAULT_SPEND_LIMITS } from '@/lib/spend-limits';
 import { registerAgentENS } from '@/lib/ens';
+import { normalizeAgentEnsLabel } from '@/lib/ens-name';
 import type { Agent } from '@/types';
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -57,6 +58,7 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
   if (!walletAddress || !isValidAddress(walletAddress)) {
     return E.forbidden('Verified World wallet address missing. Verify with World App again.');
   }
+  const requestedEnsLabel = normalizeAgentEnsLabel(ensName, walletAddress);
 
   if (!isDemoMode) {
     const isRegistered = await verifyAgentIsHuman(walletAddress);
@@ -84,7 +86,7 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
       strategy: 'dca',
       worldIdVerified: user.isVerified,
       owner: user.walletAddress,
-    })
+    }, requestedEnsLabel)
       .then(async (resolvedEnsName) => {
         await db.agent.update({
           where: { id: agent.id },

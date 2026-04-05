@@ -7,14 +7,9 @@ import { base } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
 import { JustaName } from '@justaname.id/sdk'
 import { ENS_PARENT_NAME } from './constants'
+import { normalizeAgentEnsLabel, toAgentEnsName } from './ens-name'
 
 const MAINNET_CHAIN_ID = 1
-
-// ── Slug: deterministic label from wallet address ─────────────────────────────
-// 0x742d35Cc… → "agent-742d35"
-function toSlug(walletAddress: string): string {
-  return `agent-${walletAddress.slice(2, 8).toLowerCase()}`
-}
 
 // ── JustaName client (offchain reads + fallback writes) ───────────────────────
 let _client: ReturnType<typeof JustaName.init> | null = null
@@ -103,8 +98,9 @@ async function registerOnChain(
 export async function registerAgentENS(
   agentAddress: string,
   meta: { strategy: string; worldIdVerified: boolean; owner: string },
+  requestedLabel?: string,
 ): Promise<string> {
-  const label = toSlug(agentAddress)
+  const label = normalizeAgentEnsLabel(requestedLabel, agentAddress)
 
   if (process.env.L2_REGISTRAR_ADDRESS && process.env.SERVER_WALLET_PRIVATE_KEY) {
     await registerOnChain(label, agentAddress, meta)
@@ -112,7 +108,7 @@ export async function registerAgentENS(
     await registerOffchain(label, agentAddress, meta)
   }
 
-  return `${label}.${ENS_PARENT_NAME}`
+  return toAgentEnsName(label)
 }
 
 /**

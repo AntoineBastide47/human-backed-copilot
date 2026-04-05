@@ -8,10 +8,13 @@ import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from '@/lib/client-storage'
+import { ENS_PARENT_NAME } from '@/lib/constants'
+import { deriveDefaultAgentEnsLabel } from '@/lib/ens-name'
 
 type SetupStatus = 'idle' | 'submitting' | 'active' | 'error'
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+const WORLD_WALLET_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 function StepTracker({ setupStatus }: { setupStatus: SetupStatus }) {
   const steps = isDemoMode
@@ -82,9 +85,11 @@ export default function AgentSetupPage() {
     return () => clearTimeout(t)
   }, [setupStatus, router])
 
-  const cliCommand = /^0x[0-9a-fA-F]{40}$/.test(walletAddress)
+  const cliCommand = WORLD_WALLET_REGEX.test(walletAddress)
     ? `npx @worldcoin/agentkit-cli register ${walletAddress}`
     : 'npx @worldcoin/agentkit-cli register 0xYourAgentWallet'
+  const suggestedEnsLabel = deriveDefaultAgentEnsLabel(walletAddress)
+  const suggestedEnsName = `${suggestedEnsLabel}.${ENS_PARENT_NAME}`
 
   async function createAgent() {
     const agent = await fetchJson<Agent>('/api/agents', {
@@ -129,7 +134,7 @@ export default function AgentSetupPage() {
     <div className="min-h-screen px-5 pt-8 pb-4">
       <h1 className="text-xl font-bold mb-1">Register Agent</h1>
       <p className="text-sm text-stone-500 mb-6">
-        Your agent wallet will execute trades on your behalf on World Chain.
+        Your verified World wallet becomes your agent wallet and gets an ENS subname under {ENS_PARENT_NAME}.
       </p>
 
       {setupStatus !== 'idle' ? (
@@ -175,16 +180,11 @@ export default function AgentSetupPage() {
               readOnly
               className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-sm font-mono placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-black"
             />
-            <p className="mt-1 text-xs text-stone-400">
-              {walletAddress
-                ? 'Locked to the wallet you verified with World App. Fund this wallet with ETH for gas on World Chain.'
-                : 'Verify with World App first so we can load your wallet here.'}
-            </p>
           </div>
 
           <div>
             <label htmlFor="agent-ens-name" className="block text-sm font-medium text-stone-700 mb-1">
-              ENS Name <span className="text-stone-400 font-normal">(optional)</span>
+              Agent ENS Name
             </label>
             <div className="flex items-center border border-stone-200 rounded-xl bg-white overflow-hidden focus-within:ring-2 focus-within:ring-black">
               <input
@@ -192,10 +192,10 @@ export default function AgentSetupPage() {
                 type="text"
                 value={ensName}
                 onChange={(e) => setEnsName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                placeholder="my-agent"
-                className="flex-1 px-4 py-3 text-sm bg-transparent focus:outline-none"
+                placeholder={suggestedEnsLabel}
+                className="flex-1 px-4 py-3 text-sm bg-transparent font-mono text-stone-700 placeholder:text-stone-300 focus:outline-none"
               />
-              <span className="pr-4 text-sm text-stone-400 select-none">.copilot.eth</span>
+              <span className="pr-4 text-sm text-stone-400 select-none">.{ENS_PARENT_NAME}</span>
             </div>
           </div>
 
@@ -212,11 +212,6 @@ export default function AgentSetupPage() {
               </pre>
             </div>
           )}
-
-          <div className="bg-stone-50 rounded-xl p-3 text-xs text-stone-500 space-y-1">
-            <p className="font-semibold text-stone-700">Default spend limits</p>
-            <p>Max per trade: $1,000 USDC - Daily cap: $5,000 USDC</p>
-          </div>
 
           {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
 

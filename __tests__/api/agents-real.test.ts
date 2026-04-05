@@ -49,6 +49,7 @@ vi.mock('@/services/token-balances', () => ({
 vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
   WORLD_ID_ACTION: 'register-agent',
+  ENS_PARENT_NAME: 'provix.eth',
 }));
 vi.mock('@/lib/ens', () => ({
   registerAgentENS: vi.fn().mockResolvedValue('agent-bbbbbb.provix.eth'),
@@ -260,6 +261,7 @@ describe('POST /api/agents', () => {
         worldIdVerified: true,
         owner: dbUser.walletAddress,
       }),
+      'agent-bbbbbb',
     );
 
     delete process.env.JUSTANAME_API_KEY;
@@ -280,6 +282,30 @@ describe('POST /api/agents', () => {
         where: { id: dbAgent.id },
         data: { ensName: 'agent-bbbbbb.provix.eth' },
       }),
+    );
+
+    delete process.env.JUSTANAME_API_KEY;
+  });
+
+  it('passes a custom ENS label override through to registration', async () => {
+    const { registerAgentENS } = await import('@/lib/ens');
+    process.env.JUSTANAME_API_KEY = 'test-key';
+
+    await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({ ensName: 'desk-trader' }),
+    }));
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(vi.mocked(registerAgentENS)).toHaveBeenCalledWith(
+      dbUser.walletAddress,
+      expect.objectContaining({
+        strategy: 'dca',
+        worldIdVerified: true,
+        owner: dbUser.walletAddress,
+      }),
+      'desk-trader',
     );
 
     delete process.env.JUSTANAME_API_KEY;

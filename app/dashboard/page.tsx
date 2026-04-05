@@ -269,34 +269,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stats row */}
-      {agent && (
-        <section className="grid grid-cols-3 gap-3">
-          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
-            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Trades</p>
-            <div className="text-xl font-bold text-on-surface">{agent.usageCount}</div>
-            <div className="w-full bg-surface-container h-1 rounded-full mt-2 overflow-hidden">
-              <div className="bg-primary h-full w-2/3" />
-            </div>
-          </div>
-          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
-            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Daily Cap</p>
-            <div className="text-base font-bold text-on-surface">{dailyCapDisplay}</div>
-            <div className="w-full bg-surface-container h-1 rounded-full mt-2 overflow-hidden">
-              <div className="bg-tertiary h-full w-3/4" />
-            </div>
-          </div>
-          <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant/10">
-            <p className="text-[10px] text-on-surface-variant mb-1 uppercase tracking-wider font-bold">Free left</p>
-            <div className={`text-xl font-bold ${
-              agent.freeTrialRemaining === 0 ? 'text-error' :
-              agent.freeTrialRemaining === 1 ? 'text-tertiary' :
-              'text-on-surface'
-            }`}>{agent.freeTrialRemaining}</div>
-          </div>
-        </section>
-      )}
-
       {/* Active Strategies */}
       <section className="space-y-4">
         <div className="flex justify-between items-end px-1">
