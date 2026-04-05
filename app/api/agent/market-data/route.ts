@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAgentkitRequest } from '@/services/agentkit';
-import { getQuote } from '@/services/uniswap';
+import { getQuote, resolveQuoteAmountOut } from '@/services/uniswap';
 
 export async function GET(request: Request) {
   const auth = await verifyAgentkitRequest(request);
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       tokenOut,
       chainId: parsedChainId,
       amountIn: amount,
-      estimatedOutput: quote.quote?.quote ?? quote.quote?.quoteDecimals ?? null,
+      estimatedOutput: resolveQuoteAmountOut(quote.quote, tokenOut),
       gasEstimate: quote.gasEstimate ?? null,
     });
   } catch (err) {

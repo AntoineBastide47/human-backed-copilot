@@ -20,10 +20,14 @@ vi.mock('@/lib/agent-service', () => ({
   getRecentProposal: (...args: unknown[]) => mockGetRecentProposal(...args),
 }));
 
-vi.mock('../uniswap', () => ({
-  getQuote: (...args: unknown[]) => mockGetQuote(...args),
-  executeSwap: (...args: unknown[]) => mockExecuteSwap(...args),
-}));
+vi.mock('../uniswap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../uniswap')>();
+  return {
+    ...actual,
+    getQuote: (...args: unknown[]) => mockGetQuote(...args),
+    executeSwap: (...args: unknown[]) => mockExecuteSwap(...args),
+  };
+});
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -88,7 +92,7 @@ describe('agent-runtime', () => {
     mockGetApprovedProposals.mockResolvedValue([]);
     mockGetRecentProposal.mockResolvedValue(null);
     mockGetQuote.mockResolvedValue({
-      quote: { quoteDecimals: '1000000' },
+      quote: { quote: '1000000', quoteDecimals: '1' },
       gasEstimate: '150000',
     });
     mockDbExecutionFindFirst.mockResolvedValue(null);
@@ -340,7 +344,7 @@ describe('agent-runtime', () => {
     mockGetAgentStrategies.mockResolvedValue([bad, good]);
     mockGetQuote
       .mockRejectedValueOnce(new Error('Quote failed'))
-      .mockResolvedValueOnce({ quote: { quoteDecimals: '500' } });
+      .mockResolvedValueOnce({ quote: { quote: '500000000', quoteDecimals: '500' } });
     mockCreateProposal.mockResolvedValue(makeProposal());
 
     const { startAgentLoop } = await import('../agent-runtime');

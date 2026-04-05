@@ -18,7 +18,7 @@ vi.mock('@/lib/constants', () => ({
 }))
 
 const mockFetchJson = vi.fn()
-const mockIsApiError = vi.fn(() => false)
+const mockIsApiError = vi.fn((_: unknown) => false)
 vi.mock('@/components/sync4-client', async () => {
   const actual = await vi.importActual<typeof import('@/components/sync4-client')>(
     '@/components/sync4-client'
@@ -113,7 +113,7 @@ describe('ProposalsPage', () => {
 
   it('approves a live proposal and updates the proposal cache immediately', async () => {
     swrState.data = [pendingProposal]
-    mockFetchJson.mockResolvedValue({ success: true, txHash: '0xdeadbeef12345678' })
+    mockFetchJson.mockResolvedValue({ success: true })
 
     await renderPage()
     fireEvent.click(screen.getByTestId('approve-button'))
@@ -126,14 +126,10 @@ describe('ProposalsPage', () => {
     })
 
     expect(mockMutate).toHaveBeenCalledWith([], { revalidate: false })
-    expect(mockCacheMutate).toHaveBeenCalledWith(
-      '/api/executions?agentId=agent-123',
-      expect.any(Function),
-      { revalidate: false }
-    )
+    expect(mockCacheMutate).toHaveBeenCalledWith('/api/executions?agentId=agent-123')
 
     await waitFor(() => {
-      expect(screen.getByText(/Executed on-chain/)).toBeTruthy()
+      expect(screen.getByText('Trade confirmed on World Chain.')).toBeTruthy()
     })
   })
 

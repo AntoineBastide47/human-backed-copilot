@@ -6,7 +6,6 @@ import {
   fetchJson,
   isApiError,
   normalizeProposalList,
-  prependExecutionToPage,
   removeProposalFromList,
   type ProposalRecord,
 } from '@/components/sync4-client'
@@ -69,39 +68,16 @@ export default function ProposalsPage() {
     setApprovingId(proposalId)
     try {
       const proposal = proposals?.find((item) => item.id === proposalId)
-      const data = await fetchJson<{ success: boolean; txHash?: string }>(
+      await fetchJson<{ success: boolean }>(
         `/api/agents/${agentId}/approve`,
         { method: 'POST', body: JSON.stringify({ proposalId }) }
       )
       if (proposal) {
         await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
-        if (historyKey) {
-          await mutateCache(
-            historyKey,
-            (current: unknown) =>
-              prependExecutionToPage(current, {
-                id: `optimistic-${proposalId}`,
-                agentId,
-                strategyId: proposal.strategyId,
-                proposalId,
-                txHash: data.txHash ?? '',
-                amountIn: proposal.amount,
-                amountOut: proposal.estimatedOutput,
-                status: data.txHash ? 'confirmed' : 'pending',
-                executedAt: new Date().toISOString(),
-                tokenIn: proposal.tokenIn,
-                tokenOut: proposal.tokenOut,
-              }),
-            { revalidate: false }
-          )
-        }
       } else {
         await mutate()
       }
-      addToast(
-        data.txHash ? `Executed on-chain: ${data.txHash.slice(0, 10)}...` : 'Trade executed.',
-        true
-      )
+      addToast('Trade confirmed on World Chain.', true)
       void mutate()
       if (historyKey) void mutateCache(historyKey)
     } catch (err) {

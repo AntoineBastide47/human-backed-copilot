@@ -1,3 +1,4 @@
+import { BaseError, ContractFunctionRevertedError } from 'viem';
 import type { SwapRequest, SwapResult, QuoteResult } from '@/types';
 import { getWalletClient, getPublicClient } from './wallet';
 
@@ -30,6 +31,55 @@ function validateSwapRequest(req: SwapRequest): void {
   }
   if (!req.amount || BigInt(req.amount) <= BigInt(0)) throw new Error(`Invalid amount: ${req.amount}`);
   if (req.chainId !== 480) throw new Error(`Unsupported chainId: ${req.chainId}. Only World Chain (480) is supported`);
+}
+
+function tokenDecimals(address?: string | null): number {
+  if (!address) return 18;
+
+  switch (address.toLowerCase()) {
+    case WORLD_USDC.toLowerCase():
+      return 6;
+    case '0x03c7054bcb39f7b2e5b2c7acb37583e32d70cfa':
+      return 8;
+    default:
+      return 18;
+  }
+}
+
+function decimalToRawAmount(value: string, decimals: number): string {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    throw new Error(`Invalid decimal amount: ${value}`);
+  }
+
+  const [wholePart, fractionPart = ''] = normalized.split('.');
+  const whole = BigInt(wholePart || '0');
+  const paddedFraction = (fractionPart + '0'.repeat(decimals)).slice(0, decimals);
+  const fraction = BigInt(paddedFraction || '0');
+
+  return (whole * BigInt(10) ** BigInt(decimals) + fraction).toString();
+}
+
+export function resolveQuoteAmountOut(
+  quote: QuoteResult['quote'] | undefined,
+  tokenOut?: string | null,
+): string {
+  const outputAmount = quote?.output?.amount?.trim();
+  if (outputAmount && /^\d+$/.test(outputAmount)) {
+    return outputAmount;
+  }
+
+  const rawQuote = quote?.quote?.trim();
+  if (rawQuote && /^\d+$/.test(rawQuote)) {
+    return rawQuote;
+  }
+
+  const decimalQuote = quote?.quoteDecimals?.trim();
+  if (decimalQuote) {
+    return decimalToRawAmount(decimalQuote, tokenDecimals(tokenOut));
+  }
+
+  return '0';
 }
 
 export async function getQuote(req: SwapRequest): Promise<QuoteResult> {
@@ -74,6 +124,48 @@ export async function getQuote(req: SwapRequest): Promise<QuoteResult> {
     permitData: data.permitData ?? undefined,
     gasEstimate: data.quote?.gasUseEstimate,
   };
+}
+
+function describeRevertError(error: unknown): string | null {
+  if (!(error instanceof BaseError)) {
+    if (error instanceof Error) return error.message;
+    return null;
+  }
+
+  const reverted = error.walk(
+    (candidate) => candidate instanceof ContractFunctionRevertedError,
+  ) as ContractFunctionRevertedError | null;
+
+  if (reverted?.reason) return reverted.reason;
+  if (reverted?.shortMessage) return reverted.shortMessage;
+  if (error.shortMessage) return error.shortMessage;
+  if (error.details) return error.details;
+
+  return error.message;
+}
+
+async function getRevertReason(args: {
+  publicClient: ReturnType<typeof getPublicClient>;
+  account: `0x${string}`;
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value: bigint;
+  gas?: bigint | undefined;
+  blockNumber?: bigint | undefined;
+}): Promise<string | null> {
+  try {
+    await args.publicClient.call({
+      account: args.account,
+      to: args.to,
+      data: args.data,
+      value: args.value,
+      gas: args.gas,
+      blockNumber: args.blockNumber,
+    });
+    return null;
+  } catch (error) {
+    return describeRevertError(error);
+  }
 }
 
 export async function executeSwap(req: SwapRequest): Promise<SwapResult> {
@@ -137,14 +229,51 @@ export async function executeSwap(req: SwapRequest): Promise<SwapResult> {
 
     // 6. Confirm
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    const confirmedTxHash = receipt.transactionHash ?? txHash;
+    const confirmedTx = await publicClient.getTransaction({ hash: confirmedTxHash });
+    const swapValue = BigInt(swap.value ?? '0');
+    const swapGas = swap.gasLimit ? BigInt(swap.gasLimit) : undefined;
+
+    if (Number(confirmedTx.chainId) !== req.chainId) {
+      throw new Error(`Confirmed tx mined on unexpected chainId: ${confirmedTx.chainId}`);
+    }
+    if (!confirmedTx.blockNumber) {
+      throw new Error('Confirmed tx is missing a block number');
+    }
+    if (!confirmedTx.to || confirmedTx.to.toLowerCase() !== String(swap.to).toLowerCase()) {
+      throw new Error('Confirmed tx target did not match Uniswap swap target');
+    }
+    if (confirmedTx.from.toLowerCase() !== walletClient.account.address.toLowerCase()) {
+      throw new Error('Confirmed tx sender did not match the execution wallet');
+    }
+
+    if (receipt.status !== 'success') {
+      const revertReason = await getRevertReason({
+        publicClient,
+        account: walletClient.account.address,
+        to: swap.to as `0x${string}`,
+        data: swap.data as `0x${string}`,
+        value: swapValue,
+        gas: swapGas,
+        blockNumber: receipt.blockNumber,
+      });
+
+      return {
+        success: false,
+        txHash: confirmedTxHash,
+        amountIn: req.amount,
+        amountOut: resolveQuoteAmountOut(quoteResult.quote, req.tokenOut),
+        gasUsed: receipt.gasUsed.toString(),
+        error: revertReason ?? 'Transaction reverted',
+      };
+    }
 
     return {
-      success: receipt.status === 'success',
-      txHash,
+      success: true,
+      txHash: confirmedTxHash,
       amountIn: req.amount,
-      amountOut: quoteResult.quote?.quote ?? quoteResult.quote?.quoteDecimals ?? '0',
+      amountOut: resolveQuoteAmountOut(quoteResult.quote, req.tokenOut),
       gasUsed: receipt.gasUsed.toString(),
-      error: receipt.status !== 'success' ? 'Transaction reverted' : undefined,
     };
   } catch (err) {
     return {

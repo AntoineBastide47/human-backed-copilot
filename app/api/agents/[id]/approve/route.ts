@@ -14,7 +14,7 @@ import {
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<{ success: boolean; txHash?: string } | { error: string }>> {
+): Promise<NextResponse<{ success: boolean } | { error: string }>> {
   let userId: string;
   try {
     userId = await getSessionUserId(req);
@@ -95,5 +95,5 @@ export async function POST(
     status: 'confirmed',
   });
 
-  return NextResponse.json({ success: true, txHash: result.txHash });
+  return NextResponse.json({ success: true });
 }

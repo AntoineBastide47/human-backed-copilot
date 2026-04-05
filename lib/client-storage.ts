@@ -64,3 +64,13 @@ export function setLocalStorageValue(key: StorageKey, value: string): void {
     new CustomEvent<{ key: StorageKey }>(STORAGE_EVENT, { detail: { key } }),
   )
 }
+
+export function clearLocalStorageValue(key: StorageKey): void {
+  const storage = getStorage()
+  if (!storage || typeof window === 'undefined') return
+
+  storage.removeItem(key)
+  window.dispatchEvent(
+    new CustomEvent<{ key: StorageKey }>(STORAGE_EVENT, { detail: { key } }),
+  )
+}

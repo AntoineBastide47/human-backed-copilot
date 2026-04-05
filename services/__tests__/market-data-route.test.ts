@@ -7,9 +7,13 @@ vi.mock('@/services/agentkit', () => ({
   verifyAgentkitRequest: (...args: unknown[]) => mockVerifyAgentkitRequest(...args),
 }));
 
-vi.mock('@/services/uniswap', () => ({
-  getQuote: (...args: unknown[]) => mockGetQuote(...args),
-}));
+vi.mock('@/services/uniswap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/uniswap')>();
+  return {
+    ...actual,
+    getQuote: (...args: unknown[]) => mockGetQuote(...args),
+  };
+});
 
 describe('GET /api/agent/market-data', () => {
   beforeEach(() => {
@@ -84,6 +88,25 @@ describe('GET /api/agent/market-data', () => {
     expect(data.tokenIn).toBe('0x4200000000000000000000000000000000000006');
     expect(data.estimatedOutput).toBe('950000000');
     expect(data.gasEstimate).toBe('150000');
+  });
+
+  it('normalizes decimal quote strings into raw output units', async () => {
+    mockVerifyAgentkitRequest.mockResolvedValue({ granted: true });
+    mockGetQuote.mockResolvedValue({
+      quote: { quoteDecimals: '1.82', gasUseEstimate: '150000' },
+      gasEstimate: '150000',
+    });
+
+    const res = await callRoute({
+      tokenIn: '0x4200000000000000000000000000000000000006',
+      tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
+      chainId: '480',
+      amount: '1000000000000000',
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.estimatedOutput).toBe('1820000');
   });
 
   it('returns 502 when quote throws', async () => {

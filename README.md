@@ -121,12 +121,6 @@ REDIS_URL=redis://...
 # Auth
 NEXTAUTH_SECRET=
 JWT_SECRET=
-
-# ENS
-MAINNET_RPC=
-
-# Dev tunnel
-NGROK_URL=
 ```
 
 ### 3. Database

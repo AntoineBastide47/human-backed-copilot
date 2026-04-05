@@ -233,15 +233,14 @@ describe('Sync #4 — full backend gate', () => {
   });
 
   // Step 5 ── Approve proposal → executes swap, persists execution
-  it('step 5: POST /api/agents/[id]/approve returns success=true with txHash', async () => {
+  it('step 5: POST /api/agents/[id]/approve returns success=true and persists the chain tx hash', async () => {
     const res = await approveHandler(
       postReq('http://localhost/api/agents/a1/approve', { proposalId: 'p1' }),
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(200);
-    const body = await json<{ success: boolean; txHash: string }>(res);
+    const body = await json<{ success: boolean }>(res);
     expect(body.success).toBe(true);
-    expect(body.txHash).toBe(TX_HASH);
     expect(mockMarkExecuted).toHaveBeenCalledWith('p1', expect.objectContaining({
       agentId: 'a1', strategyId: 's1', txHash: TX_HASH, status: 'confirmed',
     }));

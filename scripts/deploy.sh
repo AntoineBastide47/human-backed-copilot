@@ -27,6 +27,10 @@ cd "$PROJECT_ROOT"
 log() { echo -e "\n\033[1;34m[deploy]\033[0m $1"; }
 err() { echo -e "\033[1;31m[deploy] ERROR:\033[0m $1" >&2; exit 1; }
 
+trim() {
+  printf '%s' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
 check_cli() {
   command -v "$1" >/dev/null 2>&1 || err "$1 not installed. Run: brew install $1"
 }
@@ -125,17 +129,20 @@ deploy_web() {
   if [ -f .env ]; then
     log "Pushing env vars to Vercel..."
     while IFS= read -r line; do
+      line="$(trim "$line")"
       # Skip comments and empty lines
       [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-      key="${line%%=*}"
-      value="${line#*=}"
+      key="$(trim "${line%%=*}")"
+      value="$(trim "${line#*=}")"
       # Skip empty values
-      [ -z "$value" ] && continue
+      if [ -z "$key" ] || [ -z "$value" ]; then
+        continue
+      fi
       # Use public URL for DATABASE_URL so Vercel can reach the DB
       if [ "$key" = "DATABASE_URL" ] && [ -n "$PUBLIC_DB_URL" ]; then
         value="$PUBLIC_DB_URL"
       fi
-      echo "$value" | vercel env add "$key" production --force 2>/dev/null || true
+      printf '%s' "$value" | vercel env add "$key" production --force 2>/dev/null || true
     done < .env
   fi
 

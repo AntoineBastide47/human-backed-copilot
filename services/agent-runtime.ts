@@ -1,4 +1,4 @@
-import { getQuote, executeSwap } from './uniswap';
+import { getQuote, executeSwap, resolveQuoteAmountOut } from './uniswap';
 import {
   getAgentStrategies,
   createProposal,
@@ -115,8 +115,7 @@ async function processStrategy(
     amount: strategy.amountPerInterval,
   });
 
-  const estimatedOutput =
-    quote.quote?.quote ?? quote.quote?.quoteDecimals ?? '0';
+  const estimatedOutput = resolveQuoteAmountOut(quote.quote, strategy.tokenOut);
 
   if (strategy.autoExecute) {
     const proposal = await createProposal({

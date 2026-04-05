@@ -86,12 +86,11 @@ beforeEach(() => {
 });
 
 describe('POST /api/agents/[id]/approve', () => {
-  it('returns 200 with txHash on success', async () => {
+  it('returns 200 with success=true on success', async () => {
     const res = await POST(req({ proposalId: 'p1' }), { params: Promise.resolve({ id: 'a1' }) });
     expect(res.status).toBe(200);
-    const data = await json<{ success: boolean; txHash: string }>(res);
+    const data = await json<{ success: boolean }>(res);
     expect(data.success).toBe(true);
-    expect(data.txHash).toBe(TX);
   });
 
   it('calls markProposalExecuted with correct fields', async () => {
