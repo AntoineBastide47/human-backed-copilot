@@ -6,6 +6,7 @@ ALTER TABLE "AgentStrategy" ADD COLUMN "maxSlippageBps" INTEGER;
 ALTER TABLE "AgentStrategy" ADD COLUMN "minNotionalUsd" TEXT;
 ALTER TABLE "AgentStrategy" ADD COLUMN "cooldownMinutes" INTEGER;
 ALTER TABLE "AgentStrategy" ADD COLUMN "lastTriggeredAt" TIMESTAMP(3);
+ALTER TABLE "AgentStrategy" ADD COLUMN "metadata" JSONB NOT NULL DEFAULT '{}';
 
 -- Phase 3: Structured proposal metadata
 ALTER TABLE "Proposal" ADD COLUMN "triggerType" TEXT;
