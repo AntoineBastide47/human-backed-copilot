@@ -28,9 +28,9 @@ describe('MOCK_AGENT', () => {
     expect(MOCK_AGENT.spendLimits).toHaveProperty('dailyCap')
   })
 
-  it('ensName ends with .copilot.eth when set', () => {
+  it('ensName ends with .provix.eth when set', () => {
     if (MOCK_AGENT.ensName) {
-      expect(MOCK_AGENT.ensName).toMatch(/\.copilot\.eth$/)
+      expect(MOCK_AGENT.ensName).toMatch(/\.provix\.eth$/)
     }
   })
 })

@@ -24,7 +24,7 @@ export const DEMO_USER = {
 export const DEMO_AGENT = {
   walletAddress: DEMO_USER.walletAddress,
   agentbookRegId: 'reg_demo_copilot_001',
-  ensName: 'demo-dca.copilot.eth',
+  ensName: 'demo-dca.provix.eth',
   status: 'active' as const,
   usageCount: 8,
   freeTrialRemaining: 2,

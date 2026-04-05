@@ -37,12 +37,13 @@ async function main(): Promise<void> {
       id: 'demo-agent-001',
       ownerId: user.id,
       walletAddress: process.env.PAY_TO ?? '0x0000000000000000000000000000000000000001',
+      ensName: 'demo-dca.provix.eth',
       status: 'active',
       usageCount: 8,
       freeTrialRemaining: 3,
       spendLimits: { maxPerTx: '1000000000', dailyCap: '5000000000' },
     },
-    update: { status: 'active' },
+    update: { status: 'active', ensName: 'demo-dca.provix.eth' },
   });
   console.log(`[seed-demo] agent: ${agent.id}`);
 

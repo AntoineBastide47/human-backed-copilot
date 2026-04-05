@@ -15,7 +15,7 @@ export const MOCK_AGENT: Agent = {
   id: 'mock-agent-1',
   ownerId: 'mock-user-1',
   walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
-  ensName: 'demo-dca.copilot.eth',
+  ensName: 'demo-dca.provix.eth',
   status: 'active' as const,
   usageCount: 1,
   freeTrialRemaining: 2,

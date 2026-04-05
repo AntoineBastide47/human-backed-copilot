@@ -19,7 +19,7 @@ export const AGENTBOOK_ACTION = 'agentbook-registration';
 export const AGENTBOOK_RELAY_URL = 'https://x402-worldchain.vercel.app';
 
 // ENS
-export const ENS_PARENT_NAME = 'copilot.eth';
+export const ENS_PARENT_NAME = 'provix.eth';
 
 // Token display map
 export const TOKEN_MAP: Record<string, { symbol: string; color: string }> = {

@@ -5,6 +5,7 @@ import { E, isValidAddress } from '@/lib/api-response';
 import { toAgentResponse } from '@/lib/agent-service';
 import { verifyAgentIsHuman } from '@/services/agentkit';
 import { DEFAULT_SPEND_LIMITS } from '@/lib/spend-limits';
+import { registerAgentENS } from '@/lib/ens';
 import type { Agent } from '@/types';
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -76,6 +77,22 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
       spendLimits: spendLimits ?? DEFAULT_SPEND_LIMITS,
     },
   });
+
+  // Register ENS subname under provix.eth — non-fatal if it fails
+  if (process.env.JUSTANAME_API_KEY || process.env.L2_REGISTRAR_ADDRESS) {
+    registerAgentENS(walletAddress, {
+      strategy: 'dca',
+      worldIdVerified: user.isVerified,
+      owner: user.walletAddress,
+    })
+      .then(async (resolvedEnsName) => {
+        await db.agent.update({
+          where: { id: agent.id },
+          data: { ensName: resolvedEnsName },
+        })
+      })
+      .catch((err) => console.error('[ENS] registerAgentENS failed:', err))
+  }
 
   return NextResponse.json(toAgentResponse(agent), { status: 201 });
 }

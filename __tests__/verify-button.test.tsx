@@ -2,15 +2,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-const { mockIsInstalled, mockVerify } = vi.hoisted(() => ({
+const { mockIsInstalled, mockWalletAuth } = vi.hoisted(() => ({
   mockIsInstalled: vi.fn(() => false),
-  mockVerify: vi.fn(),
+  mockWalletAuth: vi.fn(),
 }))
 
 vi.mock('@worldcoin/minikit-js', () => ({
   MiniKit: {
     isInstalled: mockIsInstalled,
-    commandsAsync: { verify: mockVerify },
+    walletAuth: mockWalletAuth,
     user: { walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18' },
   },
 }))
@@ -25,7 +25,7 @@ import { VerifyButton } from '@/components/verify-button'
 describe('VerifyButton', () => {
   beforeEach(() => {
     mockIsInstalled.mockReset()
-    mockVerify.mockReset()
+    mockWalletAuth.mockReset()
     mockIsInstalled.mockReturnValue(false)
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -45,7 +45,7 @@ describe('VerifyButton', () => {
 
   it('shows an error when verification is cancelled', async () => {
     mockIsInstalled.mockReturnValue(true)
-    mockVerify.mockResolvedValue({ finalPayload: { status: 'error' } })
+    mockWalletAuth.mockRejectedValue(new Error('User cancelled'))
     render(<VerifyButton onVerified={vi.fn()} />)
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
@@ -55,13 +55,11 @@ describe('VerifyButton', () => {
   it('calls the backend and marks the user verified on success', async () => {
     const onVerified = vi.fn()
     mockIsInstalled.mockReturnValue(true)
-    mockVerify.mockResolvedValue({
-      finalPayload: {
-        status: 'success',
-        merkle_root: '',
-        nullifier_hash: '',
-        proof: '',
-        verification_level: 'orb',
+    mockWalletAuth.mockResolvedValue({
+      data: {
+        address: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
+        message: 'sign this',
+        signature: '0xsig',
       },
     })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -87,13 +85,11 @@ describe('VerifyButton', () => {
 
   it('shows backend rejection errors', async () => {
     mockIsInstalled.mockReturnValue(true)
-    mockVerify.mockResolvedValue({
-      finalPayload: {
-        status: 'success',
-        merkle_root: '',
-        nullifier_hash: '',
-        proof: '',
-        verification_level: 'orb',
+    mockWalletAuth.mockResolvedValue({
+      data: {
+        address: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
+        message: 'sign this',
+        signature: '0xsig',
       },
     })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

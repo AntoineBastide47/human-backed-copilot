@@ -16,7 +16,7 @@
 - World Chain USDC: 0x79A02482A880bCE3F13e09Da970dC34db4CD24d1
 - Uniswap API: https://trade-api.gateway.uniswap.org (headers: x-api-key + x-universal-router-version: 2.0)
 - World ID Action: 'register-agent' (MUST match Developer Portal)
-- ENS parent: copilot.eth
+- ENS parent: provix.eth
 
 ## File ownership
 
