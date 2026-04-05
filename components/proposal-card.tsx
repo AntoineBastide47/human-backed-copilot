@@ -5,7 +5,7 @@ import { formatTokenAmount, tokenSymbol } from '@/components/sync4-client'
 import type { Proposal } from '@/types'
 
 export interface ProposalCardProps {
-  proposal: Proposal & { txHash?: string }
+  proposal: Proposal & { txHash?: string; tokenInBalance?: string; tokenOutBalance?: string }
   onApprove: (id: string) => void
   onReject: (id: string) => void
   approvingId: string | null
@@ -25,6 +25,12 @@ export function ProposalCard({
 
   const amountIn = formatTokenAmount(proposal.amount, proposal.tokenIn, 4)
   const amountOut = formatTokenAmount(proposal.estimatedOutput, proposal.tokenOut, 2)
+  const balanceIn = proposal.tokenInBalance
+    ? formatTokenAmount(proposal.tokenInBalance, proposal.tokenIn, 4)
+    : null
+  const balanceOut = proposal.tokenOutBalance
+    ? formatTokenAmount(proposal.tokenOutBalance, proposal.tokenOut, 2)
+    : null
 
   const typeIcon = proposal.type === 'dca_buy' ? 'show_chart' : 'balance'
 
@@ -73,12 +79,22 @@ export function ProposalCard({
           <p data-testid="amount-in" className="text-base font-extrabold text-on-surface">
             {amountIn} {tokenSymbol(proposal.tokenIn)}
           </p>
+          {balanceIn && (
+            <p data-testid="token-in-balance" className="mt-1 text-[11px] font-medium text-on-surface-variant">
+              Balance {balanceIn} {tokenSymbol(proposal.tokenIn)}
+            </p>
+          )}
         </div>
         <div className="bg-surface-container-low rounded-lg p-3">
           <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Est. Receive</p>
           <p data-testid="amount-out" className="text-base font-extrabold text-on-surface">
             ~{amountOut} {tokenSymbol(proposal.tokenOut)}
           </p>
+          {balanceOut && (
+            <p data-testid="token-out-balance" className="mt-1 text-[11px] font-medium text-on-surface-variant">
+              Balance {balanceOut} {tokenSymbol(proposal.tokenOut)}
+            </p>
+          )}
         </div>
       </div>
 

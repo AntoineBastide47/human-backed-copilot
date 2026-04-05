@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { getSessionUserId, AuthError } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { E } from '@/lib/api-response';
-import { markProposalExecuted } from '@/lib/agent-service';
-import { executeSwap } from '@/services/uniswap';
+import {
+  prepareUserSwap,
+  getCurrentPermit2Allowance,
+  type PreparedTransaction,
+} from '@/services/uniswap';
 import { WORLD_CHAIN_ID } from '@/lib/constants';
 import {
   formatUsdcAmount,
@@ -11,10 +14,25 @@ import {
   normalizeSpendLimits,
 } from '@/lib/spend-limits';
 
+interface PrepareApprovalResponse {
+  success: true;
+  transactions: PreparedTransaction[];
+  amountIn: string;
+  amountOut: string;
+  approvalNeeded: boolean;
+  debug: {
+    walletAddress: string;
+    transactionTargets: string[];
+    tokenIn: string;
+    spender: string | null;
+    currentAllowance: string | null;
+  };
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<{ success: boolean; txHash?: string } | { error: string }>> {
+): Promise<NextResponse<PrepareApprovalResponse | { error: string }>> {
   let userId: string;
   try {
     userId = await getSessionUserId(req);
@@ -69,31 +87,55 @@ export async function POST(
   });
   if (count === 0) return E.conflict('Proposal is already being processed');
 
-  // Execute the swap
-  const result = await executeSwap({
-    tokenIn: proposal.tokenIn,
-    tokenOut: proposal.tokenOut,
-    chainId: WORLD_CHAIN_ID,
-    amount: proposal.amount,
-  });
+  try {
+    const prepared = await prepareUserSwap(
+      {
+        tokenIn: proposal.tokenIn,
+        tokenOut: proposal.tokenOut,
+        chainId: WORLD_CHAIN_ID,
+        amount: proposal.amount,
+      },
+      proposal.agent.walletAddress,
+    );
+    const transactionTargets = prepared.transactions.map((tx) => tx.to);
+    const spender = transactionTargets.at(-1) ?? null;
+    let currentAllowance: string | null = null;
 
-  if (!result.success) {
-    // Rollback proposal so the user can retry
+    if (spender) {
+      try {
+        currentAllowance = (
+          await getCurrentPermit2Allowance(
+            proposal.tokenIn,
+            proposal.agent.walletAddress,
+            spender,
+          )
+        ).toString();
+      } catch {
+        currentAllowance = null;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      transactions: prepared.transactions,
+      amountIn: prepared.amountIn,
+      amountOut: prepared.amountOut,
+      approvalNeeded: prepared.approvalNeeded,
+      debug: {
+        walletAddress: proposal.agent.walletAddress,
+        transactionTargets,
+        tokenIn: proposal.tokenIn,
+        spender,
+        currentAllowance,
+      },
+    });
+  } catch (err) {
     await db.proposal.update({
       where: { id: proposalId },
       data: { status: 'pending' },
     });
-    return E.badRequest(result.error ?? 'Swap execution failed');
+
+    const message = err instanceof Error ? err.message : 'Swap preparation failed';
+    return E.badRequest(message);
   }
-
-  await markProposalExecuted(proposalId, {
-    agentId: proposal.agentId,
-    strategyId: proposal.strategyId,
-    txHash: result.txHash ?? '',
-    amountIn: result.amountIn,
-    amountOut: result.amountOut,
-    status: 'confirmed',
-  });
-
-  return NextResponse.json({ success: true, txHash: result.txHash });
 }

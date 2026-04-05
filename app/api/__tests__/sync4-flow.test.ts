@@ -62,9 +62,15 @@ vi.mock('@/services/agent-runtime', () => ({
   runAgentCycleOnce: vi.fn().mockResolvedValue(undefined),
   syncAgentProposalsOnce: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('@/lib/world-userop', () => ({
+  resolveUserOperation: vi.fn(),
+}));
 vi.mock('@/services/uniswap', () => ({
-  executeSwap: vi.fn(),
+  prepareUserSwap: vi.fn(),
   getQuote: vi.fn().mockResolvedValue({ quote: { quote: '900000000' } }),
+}));
+vi.mock('@/services/token-balances', () => ({
+  getTokenBalances: vi.fn(),
 }));
 vi.mock('@/lib/constants', () => ({
   WORLD_ID_ACTION: 'register-agent',
@@ -77,12 +83,15 @@ import { POST as postAgent } from '@/app/api/agents/route';
 import { POST as postStrategy } from '@/app/api/agents/[id]/strategies/route';
 import { GET as getProposals } from '@/app/api/agents/[id]/proposals/route';
 import { POST as approveHandler } from '@/app/api/agents/[id]/approve/route';
+import { POST as confirmApproveHandler } from '@/app/api/agents/[id]/approve/confirm/route';
 import { GET as getExecutions } from '@/app/api/executions/route';
 import { verifyWorldIdProof } from '@/lib/verify';
 import { getSessionUserId, signSession, AuthError } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { markProposalExecuted } from '@/lib/agent-service';
-import { executeSwap } from '@/services/uniswap';
+import { resolveUserOperation } from '@/lib/world-userop';
+import { prepareUserSwap } from '@/services/uniswap';
+import { getTokenBalances } from '@/services/token-balances';
 
 const mockVerify = vi.mocked(verifyWorldIdProof);
 const mockGetSession = vi.mocked(getSessionUserId);
@@ -98,7 +107,9 @@ const mockProposalUpdateMany = vi.mocked(db.proposal.updateMany);
 const mockProposalUpdate = vi.mocked(db.proposal.update);
 const mockExecutionFindMany = vi.mocked(db.execution.findMany);
 const mockMarkExecuted = vi.mocked(markProposalExecuted);
-const mockSwap = vi.mocked(executeSwap);
+const mockResolveUserOperation = vi.mocked(resolveUserOperation);
+const mockPrepareUserSwap = vi.mocked(prepareUserSwap);
+const mockGetTokenBalances = vi.mocked(getTokenBalances);
 
 // ── Shared fixtures ────────────────────────────────────────────────────────────
 
@@ -161,8 +172,20 @@ describe('Sync #4 — full backend gate', () => {
     mockProposalUpdate.mockResolvedValue(dbProposal as never);
     mockExecutionFindMany.mockResolvedValue([dbExecution] as never);
     mockMarkExecuted.mockResolvedValue(undefined as never);
-    mockSwap.mockResolvedValue({
-      success: true, txHash: TX_HASH, amountIn: '1000000', amountOut: '900000000000000',
+    mockPrepareUserSwap.mockResolvedValue({
+      transactions: [{ to: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9', data: '0x1234' }],
+      amountIn: '1000000',
+      amountOut: '900000000000000',
+      approvalNeeded: false,
+    } as never);
+    mockGetTokenBalances.mockResolvedValue({
+      [TOKEN_IN.toLowerCase()]: '250000000',
+      [TOKEN_OUT.toLowerCase()]: '5000000000000000',
+    } as never);
+    mockResolveUserOperation.mockResolvedValue({
+      status: 'confirmed',
+      transactionHash: TX_HASH,
+      sender: WALLET,
     } as never);
   });
 
@@ -224,18 +247,40 @@ describe('Sync #4 — full backend gate', () => {
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(200);
-    const body = await json<Array<{ id: string; status: string; tokenIn: string; amount: string }>>(res);
+    const body = await json<Array<{ id: string; status: string; tokenIn: string; amount: string; tokenInBalance?: string; tokenOutBalance?: string }>>(res);
     expect(Array.isArray(body)).toBe(true);
     expect(body[0].id).toBe('p1');
     expect(body[0].status).toBe('pending');
     expect(body[0].tokenIn).toBe(TOKEN_IN);
     expect(body[0].amount).toBe('1000000');
+    expect(body[0].tokenInBalance).toBe('250000000');
+    expect(body[0].tokenOutBalance).toBe('5000000000000000');
   });
 
-  // Step 5 ── Approve proposal → executes swap, persists execution
-  it('step 5: POST /api/agents/[id]/approve returns success=true with txHash', async () => {
+  // Step 5 ── Prepare approval transactions for the World Wallet
+  it('step 5: POST /api/agents/[id]/approve returns prepared transactions for the World Wallet', async () => {
     const res = await approveHandler(
       postReq('http://localhost/api/agents/a1/approve', { proposalId: 'p1' }),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(200);
+    const body = await json<{ success: boolean; transactions: Array<{ to: string; data: string }> }>(res);
+    expect(body.success).toBe(true);
+    expect(body.transactions).toHaveLength(1);
+    expect(mockPrepareUserSwap).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: '1000000', chainId: 480 }),
+      WALLET,
+    );
+  });
+
+  // Step 6 ── Confirm the user operation → persists execution
+  it('step 6: POST /api/agents/[id]/approve/confirm persists the chain tx hash', async () => {
+    mockProposalFindUnique.mockResolvedValue({ ...dbProposal, status: 'approved', execution: null } as never);
+    const res = await confirmApproveHandler(
+      postReq('http://localhost/api/agents/a1/approve/confirm', {
+        proposalId: 'p1',
+        userOpHash: '0x' + '1'.repeat(64),
+      }),
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(200);
@@ -247,8 +292,8 @@ describe('Sync #4 — full backend gate', () => {
     }));
   });
 
-  // Step 6 ── Fetch execution history → paginated, execution present immediately
-  it('step 6: GET /api/executions returns paginated history with the execution', async () => {
+  // Step 7 ── Fetch execution history → paginated, execution present immediately
+  it('step 7: GET /api/executions returns paginated history with the execution', async () => {
     const res = await getExecutions(
       new Request('http://localhost/api/executions?agentId=a1')
     );
@@ -319,7 +364,7 @@ describe('Sync #4 — full backend gate', () => {
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(409);
-    expect(mockSwap).not.toHaveBeenCalled();
+    expect(mockPrepareUserSwap).not.toHaveBeenCalled();
   });
 
   it('returns 409 on concurrent approve (optimistic lock — count=0)', async () => {
@@ -329,12 +374,12 @@ describe('Sync #4 — full backend gate', () => {
       { params: Promise.resolve({ id: 'a1' }) }
     );
     expect(res.status).toBe(409);
-    expect(mockSwap).not.toHaveBeenCalled();
+    expect(mockPrepareUserSwap).not.toHaveBeenCalled();
     expect(mockMarkExecuted).not.toHaveBeenCalled();
   });
 
   it('rolls back proposal to pending and returns 400 when swap fails', async () => {
-    mockSwap.mockResolvedValue({ success: false, error: 'No liquidity', amountIn: '0', amountOut: '0' } as never);
+    mockPrepareUserSwap.mockRejectedValue(new Error('No liquidity') as never);
     const res = await approveHandler(
       postReq('http://localhost/api/agents/a1/approve', { proposalId: 'p1' }),
       { params: Promise.resolve({ id: 'a1' }) }

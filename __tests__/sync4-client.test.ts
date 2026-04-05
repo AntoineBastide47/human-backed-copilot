@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   ApiError,
+  AUTH_EXPIRED_EVENT,
   isApiError,
   fetchJson,
   tokenDecimals,
@@ -98,6 +99,24 @@ describe('fetchJson', () => {
     })
   })
 
+  it('dispatches an auth-expired event on 401 responses', async () => {
+    const onExpired = vi.fn()
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired)
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Missing session cookie' }),
+    } as Response)
+
+    await expect(fetchJson('/api/test')).rejects.toMatchObject({
+      message: 'Missing session cookie',
+      status: 401,
+    })
+
+    expect(onExpired).toHaveBeenCalledTimes(1)
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired)
+  })
+
   it('sets Content-Type: application/json for JSON body', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -176,6 +195,9 @@ describe('formatTokenAmount', () => {
   })
   it('returns zero string on invalid input', () => {
     expect(formatTokenAmount('not-a-number', WETH, 4)).toBe('0.0000')
+  })
+  it('formats decimal strings directly when passed a human-readable quote', () => {
+    expect(formatTokenAmount('1.82', USDC, 2)).toBe('1.82')
   })
   it('returns zero string on empty string', () => {
     expect(formatTokenAmount('', WETH, 4)).toBe('0.0000')

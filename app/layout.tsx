@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import { AuthExpiryHandler } from '@/components/auth-expiry-handler'
 import { MiniKitProvider } from '@/components/minikit-provider'
 import { NavTabs } from '@/components/nav-tabs'
 import { TopAppBar } from '@/components/top-app-bar'
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-background text-on-surface antialiased">
         <MiniKitProvider>
+          <AuthExpiryHandler />
           <TopAppBar />
           <div className="pt-16 pb-28">{children}</div>
           <NavTabs />

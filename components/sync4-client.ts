@@ -1,6 +1,8 @@
 import * as constants from '@/lib/constants'
 import type { Agent, Execution, PaginatedResponse, Proposal } from '@/types'
 
+export const AUTH_EXPIRED_EVENT = 'hbc-auth-expired'
+
 const EXTRA_TOKEN_INFO = {
   '0x163f8c2467924be0ae7b5347228cabf260318753': {
     symbol: 'WLD',
@@ -35,7 +37,11 @@ export const STORAGE_KEYS = {
   walletAddress: 'hbc_walletAddress',
 } as const
 
-export type ProposalRecord = Proposal & { txHash?: string }
+export type ProposalRecord = Proposal & {
+  txHash?: string
+  tokenInBalance?: string
+  tokenOutBalance?: string
+}
 export type ExecutionRecord = Execution & { tokenIn?: string; tokenOut?: string }
 
 export class ApiError extends Error {
@@ -77,6 +83,17 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
       isRecord(body) && typeof body.error === 'string'
         ? body.error
         : `Request failed: ${response.status}`
+
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(AUTH_EXPIRED_EVENT, {
+          detail: {
+            status: response.status,
+            message,
+          },
+        }),
+      )
+    }
 
     throw new ApiError(message, response.status)
   }
@@ -136,12 +153,34 @@ export function formatTokenAmount(
   address?: string | null,
   precision?: number
 ): string {
+  const normalized = rawAmount.trim()
   const decimals = tokenDecimals(address)
   const digits = precision ?? (decimals <= 8 ? 2 : 4)
   const zeroValue = digits > 0 ? `0.${'0'.repeat(digits)}` : '0'
 
+  if (/^\d+\.\d+$/.test(normalized)) {
+    try {
+      const scale = BigInt(10) ** BigInt(digits)
+      const [wholePart, fractionPart = ''] = normalized.split('.')
+      const roundedDigits = (fractionPart + '0'.repeat(digits + 1)).slice(0, digits + 1)
+      let scaled = BigInt(wholePart || '0') * scale + BigInt((roundedDigits.slice(0, digits) || '').padEnd(digits, '0') || '0')
+
+      if ((roundedDigits[digits] ?? '0') >= '5') {
+        scaled += BigInt(1)
+      }
+
+      const whole = scaled / scale
+      if (digits === 0) return whole.toString()
+
+      const fraction = (scaled % scale).toString().padStart(digits, '0')
+      return `${whole.toString()}.${fraction}`
+    } catch {
+      return zeroValue
+    }
+  }
+
   try {
-    const amount = BigInt(rawAmount)
+    const amount = BigInt(normalized)
     const divisor = BigInt(10) ** BigInt(decimals)
     const scale = BigInt(10) ** BigInt(digits)
     const rounded = (amount * scale + divisor / BigInt(2)) / divisor

@@ -71,6 +71,9 @@ export async function POST(
   if (tokenIn.toLowerCase() === tokenOut.toLowerCase()) return E.badRequest('tokenIn and tokenOut must differ');
   if (!VALID_INTERVALS.has(interval)) return E.badRequest('interval must be hourly, daily, or weekly');
   if (!amountPerInterval) return E.badRequest('amountPerInterval is required');
+  if (autoExecute) {
+    return E.badRequest('Auto-execute is unavailable when trades must be signed by the World Wallet');
+  }
 
   try {
     if (BigInt(amountPerInterval) <= BigInt(0)) return E.badRequest('amountPerInterval must be positive');
@@ -87,7 +90,7 @@ export async function POST(
       tokenOut,
       chainId: resolvedChainId,
       amount: amountPerInterval,
-    });
+    }, { swapper: agent.walletAddress });
 
     if (quote.txFailureReason) {
       return E.badRequest(`Strategy is not quotable right now: ${quote.txFailureReason}`);

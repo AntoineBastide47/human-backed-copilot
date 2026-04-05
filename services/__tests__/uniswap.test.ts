@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { BaseError, ContractFunctionRevertedError } from 'viem';
 import type { SwapRequest } from '@/types';
 
 // Mock wallet module
@@ -9,6 +10,7 @@ vi.mock('../wallet', () => ({
     sendTransaction: vi.fn().mockResolvedValue('0xtxhash'),
   })),
   getPublicClient: vi.fn(() => ({
+    readContract: vi.fn().mockResolvedValue(BigInt('0')),
     waitForTransactionReceipt: vi.fn().mockResolvedValue({
       status: 'success',
       gasUsed: BigInt(21000),
@@ -237,6 +239,40 @@ describe('getQuote', () => {
   });
 });
 
+describe('resolveQuoteAmountOut', () => {
+  let resolveQuoteAmountOut: typeof import('../uniswap').resolveQuoteAmountOut;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    process.env.UNISWAP_API_KEY = 'test-key';
+    process.env.WORLD_CHAIN_RPC = 'https://rpc.example.com';
+    process.env.WALLET_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
+    ({ resolveQuoteAmountOut } = await import('../uniswap'));
+  });
+
+  it('prefers output.amount when present', () => {
+    expect(
+      resolveQuoteAmountOut({ output: { amount: '950000000' }, quote: '1.23', quoteDecimals: '1.23' }, VALID_TOKEN_B),
+    ).toBe('950000000');
+  });
+
+  it('falls back to raw quote when present', () => {
+    expect(
+      resolveQuoteAmountOut({ quote: '925000000', quoteDecimals: '925' }, VALID_TOKEN_B),
+    ).toBe('925000000');
+  });
+
+  it('converts decimal quote strings into raw token units', () => {
+    expect(
+      resolveQuoteAmountOut({ quoteDecimals: '1.82' }, '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1'),
+    ).toBe('1820000');
+  });
+
+  it('returns 0 when no usable quote amount exists', () => {
+    expect(resolveQuoteAmountOut({}, VALID_TOKEN_B)).toBe('0');
+  });
+});
+
 describe('executeSwap', () => {
   let executeSwap: typeof import('../uniswap').executeSwap;
   let getWalletClient: Mock;
@@ -245,6 +281,13 @@ describe('executeSwap', () => {
   const mockSignTypedData = vi.fn().mockResolvedValue('0xsig123');
   const mockSendTransaction = vi.fn().mockResolvedValue('0xtxhash123');
   const mockWaitForReceipt = vi.fn().mockResolvedValue({ status: 'success', gasUsed: BigInt(50000) });
+  const mockGetTransaction = vi.fn().mockResolvedValue({
+    chainId: 480,
+    blockNumber: BigInt(123),
+    to: '0x2222222222222222222222222222222222222222',
+    from: '0x1111111111111111111111111111111111111111',
+  });
+  const mockCall = vi.fn().mockResolvedValue({ data: '0x' });
 
   beforeEach(async () => {
     vi.resetModules();
@@ -263,11 +306,15 @@ describe('executeSwap', () => {
     });
     getPublicClient.mockReturnValue({
       waitForTransactionReceipt: mockWaitForReceipt,
+      getTransaction: mockGetTransaction,
+      call: mockCall,
     });
 
     mockSignTypedData.mockClear();
     mockSendTransaction.mockClear();
     mockWaitForReceipt.mockClear();
+    mockGetTransaction.mockClear();
+    mockCall.mockClear();
 
     ({ executeSwap } = await import('../uniswap'));
   });
@@ -298,6 +345,31 @@ describe('executeSwap', () => {
     expect(result.amountIn).toBe(validRequest.amount);
     expect(result.amountOut).toBe('500000000');
     expect(result.gasUsed).toBe('50000');
+  });
+
+  it('converts decimal quote strings for amountOut when raw quote is absent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ quote: { quoteDecimals: '1.82' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: { data: '0xdata', to: '0x' + '2'.repeat(40), from: '0x' + '1'.repeat(40) },
+            }),
+        }),
+    );
+
+    const result = await executeSwap({
+      ...validRequest,
+      tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
+    });
+
+    expect(result.amountOut).toBe('1820000');
   });
 
   it('signs permit2 when permitData present', async () => {
@@ -416,7 +488,21 @@ describe('executeSwap', () => {
   });
 
   it('returns failure on reverted transaction', async () => {
-    mockWaitForReceipt.mockResolvedValueOnce({ status: 'reverted', gasUsed: BigInt(21000) });
+    mockWaitForReceipt.mockResolvedValueOnce({
+      status: 'reverted',
+      gasUsed: BigInt(21000),
+      blockNumber: BigInt(123),
+    });
+    mockCall.mockRejectedValueOnce(
+      new BaseError('Execution reverted', {
+        cause: new ContractFunctionRevertedError({
+          abi: [],
+          data: undefined,
+          functionName: 'execute',
+          message: 'V3TooLittleReceived',
+        }),
+      }),
+    );
 
     vi.stubGlobal(
       'fetch',
@@ -433,8 +519,60 @@ describe('executeSwap', () => {
 
     const result = await executeSwap(validRequest);
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Transaction reverted');
+    expect(result.error).toBe('V3TooLittleReceived');
     expect(result.txHash).toBe('0xtxhash123');
+  });
+
+  it('falls back to generic revert text when the reason cannot be decoded', async () => {
+    mockWaitForReceipt.mockResolvedValueOnce({
+      status: 'reverted',
+      gasUsed: BigInt(21000),
+      blockNumber: BigInt(123),
+    });
+    mockCall.mockRejectedValueOnce(new Error('execution reverted'));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ quote: {} }) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: { data: '0xdata', to: '0x' + '2'.repeat(40), from: '0x' + '1'.repeat(40) },
+            }),
+        }),
+    );
+
+    const result = await executeSwap(validRequest);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('execution reverted');
+  });
+
+  it('fails when the confirmed tx is not on World Chain', async () => {
+    mockGetTransaction.mockResolvedValueOnce({
+      chainId: 1,
+      blockNumber: BigInt(123),
+      to: '0x2222222222222222222222222222222222222222',
+      from: '0x1111111111111111111111111111111111111111',
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ quote: {} }) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: { data: '0xdata', to: '0x' + '2'.repeat(40), from: '0x' + '1'.repeat(40) },
+            }),
+        }),
+    );
+
+    const result = await executeSwap(validRequest);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('unexpected chainId');
   });
 
   it('catches network errors gracefully', async () => {
@@ -449,6 +587,73 @@ describe('executeSwap', () => {
     const result = await executeSwap({ ...validRequest, chainId: 1 });
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unsupported chainId');
+  });
+});
+
+describe('prepareUserSwap', () => {
+  let prepareUserSwap: typeof import('../uniswap').prepareUserSwap;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    process.env.UNISWAP_API_KEY = 'test-key';
+    process.env.WORLD_CHAIN_RPC = 'https://rpc.example.com';
+    process.env.WALLET_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
+
+    ({ prepareUserSwap } = await import('../uniswap'));
+  });
+
+  it('prepends a Permit2 approval before the router call', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ quote: {} }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: {
+                data: '0xswap',
+                to: '0x2222222222222222222222222222222222222222',
+                from: '0x1111111111111111111111111111111111111111',
+              },
+            }),
+        }),
+    );
+
+    const result = await prepareUserSwap(validRequest, '0x1111111111111111111111111111111111111111');
+    expect(result.approvalNeeded).toBe(true);
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions[0].to).toBe('0x000000000022D473030F116dDEE9F6B43aC78BA3');
+    expect(result.transactions[1].to).toBe('0x2222222222222222222222222222222222222222');
+  });
+
+  it('normalizes decimal swap values to hex for MiniKit', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ quote: {} }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: {
+                data: '0xswap',
+                to: '0x2222222222222222222222222222222222222222',
+                from: '0x1111111111111111111111111111111111111111',
+                value: '1000000000000000',
+              },
+            }),
+        }),
+    );
+
+    const result = await prepareUserSwap(validRequest, '0x1111111111111111111111111111111111111111');
+    expect(result.transactions[1]?.value).toBe('0x38d7ea4c68000');
   });
 });
 

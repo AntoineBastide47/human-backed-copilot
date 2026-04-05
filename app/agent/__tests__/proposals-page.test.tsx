@@ -3,6 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 
+const mockSendTransaction = vi.fn()
+const mockMiniKitInstalled = vi.fn(() => true)
+vi.mock('@worldcoin/minikit-js', () => ({
+  MiniKit: {
+    isInstalled: () => mockMiniKitInstalled(),
+    sendTransaction: (...args: unknown[]) => mockSendTransaction(...args),
+  },
+}))
+
 vi.mock('next/link', () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
     <a href={href} className={className}>{children}</a>
@@ -14,11 +23,12 @@ vi.mock('@/lib/constants', () => ({
     '0x4200000000000000000000000000000000000006': { symbol: 'WETH', color: '#3b82f6' },
     '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1': { symbol: 'USDC', color: '#16a34a' },
   },
+  WORLD_CHAIN_ID: 480,
   txExplorerUrl: (hash: string) => `https://worldscan.org/tx/${hash}`,
 }))
 
 const mockFetchJson = vi.fn()
-const mockIsApiError = vi.fn(() => false)
+const mockIsApiError = vi.fn((_: unknown) => false)
 vi.mock('@/components/sync4-client', async () => {
   const actual = await vi.importActual<typeof import('@/components/sync4-client')>(
     '@/components/sync4-client'
@@ -81,6 +91,9 @@ beforeEach(() => {
   mockMutate.mockReset()
   mockCacheMutate.mockReset()
   mockSetAgentId.mockReset()
+  mockSendTransaction.mockReset()
+  mockMiniKitInstalled.mockReset()
+  mockMiniKitInstalled.mockReturnValue(true)
 })
 
 describe('ProposalsPage', () => {
@@ -113,7 +126,25 @@ describe('ProposalsPage', () => {
 
   it('approves a live proposal and updates the proposal cache immediately', async () => {
     swrState.data = [pendingProposal]
-    mockFetchJson.mockResolvedValue({ success: true, txHash: '0xdeadbeef12345678' })
+    mockFetchJson
+      .mockResolvedValueOnce({
+        success: true,
+        transactions: [{ to: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9', data: '0x1234' }],
+        amountIn: pendingProposal.amount,
+        amountOut: pendingProposal.estimatedOutput,
+        approvalNeeded: false,
+        debug: {
+          walletAddress: '0x' + 'a'.repeat(40),
+          transactionTargets: ['0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9'],
+          tokenIn: WETH,
+          spender: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9',
+          currentAllowance: '1000000000000000000',
+        },
+      })
+      .mockResolvedValueOnce({ success: true, txHash: '0x' + '1'.repeat(64) })
+    mockSendTransaction.mockResolvedValue({
+      data: { userOpHash: '0x' + '2'.repeat(64) },
+    })
 
     await renderPage()
     fireEvent.click(screen.getByTestId('approve-button'))
@@ -125,15 +156,16 @@ describe('ProposalsPage', () => {
       )
     })
 
+    expect(mockSendTransaction).toHaveBeenCalledWith({
+      chainId: 480,
+      transactions: [{ to: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9', data: '0x1234' }],
+    })
+
     expect(mockMutate).toHaveBeenCalledWith([], { revalidate: false })
-    expect(mockCacheMutate).toHaveBeenCalledWith(
-      '/api/executions?agentId=agent-123',
-      expect.any(Function),
-      { revalidate: false }
-    )
+    expect(mockCacheMutate).toHaveBeenCalledWith('/api/executions?agentId=agent-123')
 
     await waitFor(() => {
-      expect(screen.getByText(/Executed on-chain/)).toBeTruthy()
+      expect(screen.getByText('Trade confirmed on World Chain.')).toBeTruthy()
     })
   })
 
@@ -159,6 +191,7 @@ describe('ProposalsPage', () => {
 
   it('shows backend errors when approval fails', async () => {
     swrState.data = [pendingProposal]
+    mockMiniKitInstalled.mockReturnValue(true)
     mockFetchJson.mockRejectedValue(new Error('Swap failed'))
 
     await renderPage()
@@ -167,5 +200,88 @@ describe('ProposalsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Swap failed')).toBeTruthy()
     })
+  })
+
+  it('shows allowlist contract addresses when World App rejects invalid_contract', async () => {
+    swrState.data = [pendingProposal]
+    mockFetchJson
+      .mockResolvedValueOnce({
+        success: true,
+        transactions: [
+          { to: WETH, data: '0xaaaa' },
+          { to: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9', data: '0xbbbb' },
+        ],
+        amountIn: pendingProposal.amount,
+        amountOut: pendingProposal.estimatedOutput,
+        approvalNeeded: true,
+        debug: {
+          walletAddress: '0x' + 'a'.repeat(40),
+          transactionTargets: [WETH, '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9'],
+          tokenIn: WETH,
+          spender: '0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9',
+          currentAllowance: '0',
+        },
+      })
+      .mockResolvedValueOnce({ cancelled: true })
+    mockSendTransaction.mockRejectedValue(new Error('invalid_contract'))
+
+    await renderPage()
+    fireEvent.click(screen.getByTestId('approve-button'))
+
+    await waitFor(() => {
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        '/api/agents/agent-123/approve/cancel',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(new RegExp(`Whitelist these Contract Entrypoints:\\s*${WETH}\\s*0x02E5be68D46DAc0B524905bfF209cf47EE6dB2a9`))).toBeTruthy()
+    })
+  })
+
+  it('shows a World App message when MiniKit is unavailable', async () => {
+    swrState.data = [pendingProposal]
+    mockMiniKitInstalled.mockReturnValue(false)
+
+    await renderPage()
+    fireEvent.click(screen.getByTestId('approve-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Open this mini app in World App to approve trades.')).toBeTruthy()
+    })
+  })
+
+  it('shows prep wallet and transaction targets when simulation fails', async () => {
+    swrState.data = [pendingProposal]
+    mockFetchJson
+      .mockResolvedValueOnce({
+        success: true,
+        transactions: [{ to: WETH, data: '0xaaaa' }],
+        amountIn: pendingProposal.amount,
+        amountOut: pendingProposal.estimatedOutput,
+        approvalNeeded: false,
+        debug: {
+          walletAddress: '0xc7718af184004c606c7fde786f529e13238f26c8',
+          transactionTargets: [WETH],
+          tokenIn: WETH,
+          spender: WETH,
+          currentAllowance: '0',
+        },
+      })
+      .mockResolvedValueOnce({ cancelled: true })
+    mockSendTransaction.mockRejectedValue(new Error('simulation_failed'))
+
+    await renderPage()
+    fireEvent.click(screen.getByTestId('approve-button'))
+
+    await waitFor(() => {
+    expect(screen.getByText(/World App simulation failed\./)).toBeTruthy()
+    })
+
+    expect(screen.getByText(/Prep wallet: 0xc7718af184004c606c7fde786f529e13238f26c8/)).toBeTruthy()
+    expect(screen.getByText(new RegExp(`Token in: ${WETH}`))).toBeTruthy()
+    expect(screen.getByText(/Permit2 allowance: 0/)).toBeTruthy()
+    expect(screen.getByText(new RegExp(WETH))).toBeTruthy()
   })
 })
