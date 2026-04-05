@@ -29,7 +29,6 @@ export default function StrategiesPage() {
   const [tokenOut, setTokenOut] = useState<string>(TOKEN_PAIRS[0].tokenOut)
   const [amount, setAmount] = useState('')
   const [interval, setInterval] = useState<Interval>('daily')
-  const [autoExecute, setAutoExecute] = useState(false)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -59,7 +58,7 @@ export default function StrategiesPage() {
           chainId: WORLD_CHAIN_ID,
           amountPerInterval: amountRaw,
           interval,
-          autoExecute,
+          autoExecute: false,
         }),
       })
 
@@ -178,22 +177,16 @@ export default function StrategiesPage() {
             <div className="pr-4">
               <p className="text-sm font-semibold">Auto-execute</p>
               <p className="text-xs text-stone-400 mt-0.5">
-                {autoExecute
-                  ? 'Your agent trades without asking. Faster, but less control.'
-                  : 'You approve each trade. Recommended for new strategies.'}
+                World Wallet trades must be signed in-app, so this strategy always creates a proposal first.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setAutoExecute(v => !v)}
-              aria-pressed={autoExecute}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 ${
-                autoExecute
-                  ? 'bg-black text-white'
-                  : 'bg-stone-100 text-stone-500'
-              }`}
+              disabled
+              aria-pressed={false}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 bg-stone-100 text-stone-400 cursor-not-allowed"
             >
-              {autoExecute ? 'Enabled' : 'Disabled'}
+              Approval Only
             </button>
           </div>
         </div>

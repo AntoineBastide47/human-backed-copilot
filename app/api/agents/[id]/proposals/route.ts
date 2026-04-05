@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { E } from '@/lib/api-response';
 import { toProposalResponse } from '@/lib/agent-service';
 import { syncAgentProposalsOnce } from '@/services/agent-runtime';
+import { getTokenBalances } from '@/services/token-balances';
 import type { Proposal } from '@/types';
 
 const VALID_STATUSES = new Set(['pending', 'approved', 'rejected', 'executed']);
@@ -41,5 +42,21 @@ export async function GET(
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json(proposals.map(toProposalResponse));
+  const proposalResponses = proposals.map(toProposalResponse);
+  const tokenAddresses = proposalResponses.flatMap((proposal) => [proposal.tokenIn, proposal.tokenOut]);
+
+  try {
+    const balances = await getTokenBalances(agent.walletAddress, tokenAddresses);
+
+    return NextResponse.json(
+      proposalResponses.map((proposal) => ({
+        ...proposal,
+        tokenInBalance: balances[proposal.tokenIn.toLowerCase()] ?? '0',
+        tokenOutBalance: balances[proposal.tokenOut.toLowerCase()] ?? '0',
+      })),
+    );
+  } catch (err) {
+    console.error('[proposals] token balance lookup failed:', err);
+    return NextResponse.json(proposalResponses);
+  }
 }

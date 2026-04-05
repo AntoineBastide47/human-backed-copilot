@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
+import { MiniKit } from '@worldcoin/minikit-js'
 import {
   fetchJson,
   isApiError,
@@ -11,8 +12,84 @@ import {
 } from '@/components/sync4-client'
 import { useAgentId } from '@/components/use-agent-id'
 import { ProposalCard } from '@/components/proposal-card'
+import { WORLD_CHAIN_ID } from '@/lib/constants'
 
 const fetcher = async (url: string) => normalizeProposalList(await fetchJson<unknown>(url))
+const CONFIRM_POLL_INTERVAL_MS = 2_000
+const CONFIRM_MAX_ATTEMPTS = 10
+
+interface PreparedApproval {
+  success: true
+  transactions: Array<{ to: string; data: string; value?: string }>
+  amountIn: string
+  amountOut: string
+  approvalNeeded: boolean
+  debug?: {
+    walletAddress: string
+    transactionTargets: string[]
+    tokenIn: string
+    spender: string | null
+    currentAllowance: string | null
+  }
+}
+
+interface ConfirmedApproval {
+  success: true
+  txHash: string
+}
+
+interface PendingApproval {
+  success: false
+  pending: true
+}
+
+function formatInvalidContractMessage(transactions: PreparedApproval['transactions'] | undefined) {
+  const uniqueAddresses = (transactions ?? []).reduce<string[]>((list, tx) => {
+    const address = tx.to
+    if (!list.some((entry) => entry.toLowerCase() === address.toLowerCase())) {
+      list.push(address)
+    }
+    return list
+  }, [])
+
+  if (uniqueAddresses.length === 0) {
+    return 'World App blocked a contract in this trade. Whitelist the token contract and Uniswap router in the Developer Portal.'
+  }
+
+  return [
+    'World App blocked a contract in this trade.',
+    'Whitelist these Contract Entrypoints:',
+    ...uniqueAddresses,
+  ].join('\n')
+}
+
+function formatSimulationFailedMessage(preparedApproval: PreparedApproval | null) {
+  const walletAddress = preparedApproval?.debug?.walletAddress
+  const targets = preparedApproval?.debug?.transactionTargets ?? []
+  const tokenIn = preparedApproval?.debug?.tokenIn
+  const spender = preparedApproval?.debug?.spender
+  const currentAllowance = preparedApproval?.debug?.currentAllowance
+
+  const lines = [
+    'World App simulation failed.',
+    walletAddress ? `Prep wallet: ${walletAddress}` : null,
+    tokenIn ? `Token in: ${tokenIn}` : null,
+    spender ? `Spender: ${spender}` : null,
+    currentAllowance !== undefined && currentAllowance !== null ? `Permit2 allowance: ${currentAllowance}` : null,
+    targets.length > 0 ? 'Transaction targets:' : null,
+    ...targets,
+    'Check that this exact wallet holds the input token and is the sender World App is simulating.',
+  ].filter(Boolean)
+
+  return lines.join('\n')
+}
+
+async function sendWorldTransaction(preparedApproval: PreparedApproval) {
+  return MiniKit.sendTransaction({
+    chainId: WORLD_CHAIN_ID,
+    transactions: preparedApproval.transactions,
+  })
+}
 
 function ProposalCardSkeleton() {
   return (
@@ -57,32 +134,95 @@ export default function ProposalsPage() {
     }
   }, [error, setAgentId])
 
-  const addToast = (msg: string, ok: boolean) => {
+  const addToast = (msg: string, ok: boolean, durationMs?: number) => {
     const id = globalThis.crypto?.randomUUID?.() ?? `toast-${Date.now()}-${Math.random()}`
     setToasts(t => [...t, { id, msg, ok }])
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000)
+    const lifetime = durationMs ?? (msg.length > 120 ? 10_000 : 5_000)
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), lifetime)
+  }
+
+  const rollbackApproval = async (proposalId: string) => {
+    if (!agentId) return
+
+    try {
+      await fetchJson<{ cancelled: true }>(
+        `/api/agents/${agentId}/approve/cancel`,
+        { method: 'POST', body: JSON.stringify({ proposalId }) }
+      )
+    } catch {
+      // Ignore rollback failures and rely on the next refresh to rehydrate.
+    }
+  }
+
+  const waitForConfirmation = async (proposalId: string, userOpHash: string) => {
+    if (!agentId) return null
+
+    for (let attempt = 0; attempt < CONFIRM_MAX_ATTEMPTS; attempt += 1) {
+      const confirmation = await fetchJson<ConfirmedApproval | PendingApproval>(
+        `/api/agents/${agentId}/approve/confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ proposalId, userOpHash }),
+        }
+      )
+
+      if (confirmation.success) {
+        return confirmation
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, CONFIRM_POLL_INTERVAL_MS))
+    }
+
+    return null
   }
 
   const handleApprove = async (proposalId: string) => {
     if (!agentId) { addToast('No active agent found.', false); return }
+    if (!MiniKit.isInstalled()) { addToast('Open this mini app in World App to approve trades.', false); return }
     setApprovingId(proposalId)
+    let preparedApproval: PreparedApproval | null = null
+    let prepared = false
+    let submitted = false
     try {
       const proposal = proposals?.find((item) => item.id === proposalId)
-      await fetchJson<{ success: boolean }>(
+      preparedApproval = await fetchJson<PreparedApproval>(
         `/api/agents/${agentId}/approve`,
         { method: 'POST', body: JSON.stringify({ proposalId }) }
       )
+      prepared = true
+
+      const result = await sendWorldTransaction(preparedApproval)
+      submitted = true
+
       if (proposal) {
         await mutate(removeProposalFromList(proposals, proposalId), { revalidate: false })
       } else {
         await mutate()
       }
-      addToast('Trade confirmed on World Chain.', true)
-      void mutate()
-      if (historyKey) void mutateCache(historyKey)
+
+      const confirmation = await waitForConfirmation(proposalId, result.data.userOpHash)
+      if (confirmation?.success) {
+        addToast('Trade confirmed on World Chain.', true)
+        void mutate()
+        if (historyKey) void mutateCache(historyKey)
+      } else {
+        addToast('Trade submitted. Waiting for World Chain confirmation.', true)
+      }
     } catch (err) {
+      if (prepared && !submitted) {
+        await rollbackApproval(proposalId)
+      }
       void mutate()
-      addToast(err instanceof Error ? err.message : 'Error approving', false)
+      const message = err instanceof Error ? err.message : 'Error approving'
+      if (message.includes('user_rejected')) {
+        addToast('Transaction cancelled in World App.', false)
+      } else if (message.includes('invalid_contract')) {
+        addToast(formatInvalidContractMessage(preparedApproval?.transactions), false, 12_000)
+      } else if (message.includes('simulation_failed')) {
+        addToast(formatSimulationFailedMessage(preparedApproval), false, 12_000)
+      } else {
+        addToast(message, false)
+      }
     } finally {
       setApprovingId(null)
     }
@@ -198,11 +338,11 @@ export default function ProposalsPage() {
       )}
 
       {/* Toasts */}
-      <div className="fixed bottom-28 left-4 right-4 space-y-2 pointer-events-none z-50">
+      <div className="fixed bottom-36 left-4 right-4 space-y-2 pointer-events-none z-50 max-h-[40vh] overflow-y-auto">
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`w-full py-3 px-4 rounded-xl text-sm font-medium text-white shadow-lg ${
+            className={`w-full py-3 px-4 rounded-xl text-sm font-medium text-white shadow-lg whitespace-pre-wrap break-all leading-relaxed text-left ${
               t.ok ? 'bg-tertiary' : 'bg-secondary-dim'
             }`}
           >

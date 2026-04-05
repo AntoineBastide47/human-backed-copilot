@@ -27,6 +27,8 @@ const pendingProposal: Proposal & { txHash?: string } = {
   reasoning: 'DCA #4 of daily plan',
   status: 'pending',
   createdAt: new Date(Date.now() - 60_000).toISOString(),
+  tokenInBalance: '5000000000000000',
+  tokenOutBalance: '125000000',
 }
 
 const executedProposal: Proposal & { txHash?: string } = {
@@ -79,6 +81,16 @@ describe('ProposalCard', () => {
     it('formats USDC output to 2 decimal places', () => {
       render(<ProposalCard {...makeProps()} />)
       expect(screen.getByTestId('amount-out').textContent).toContain('925.00')
+    })
+
+    it('shows the selling token balance', () => {
+      render(<ProposalCard {...makeProps()} />)
+      expect(screen.getByTestId('token-in-balance').textContent).toContain('0.0050 WETH')
+    })
+
+    it('shows the receive token balance', () => {
+      render(<ProposalCard {...makeProps()} />)
+      expect(screen.getByTestId('token-out-balance').textContent).toContain('125.00 USDC')
     })
 
     it('renders Approve and Reject buttons', () => {

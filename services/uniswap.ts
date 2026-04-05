@@ -1,9 +1,54 @@
-import { BaseError, ContractFunctionRevertedError } from 'viem';
+import { BaseError, ContractFunctionRevertedError, encodeFunctionData } from 'viem';
 import type { SwapRequest, SwapResult, QuoteResult } from '@/types';
 import { getWalletClient, getPublicClient } from './wallet';
 
 const API_BASE = 'https://trade-api.gateway.uniswap.org';
 const WORLD_USDC = '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1';
+const PROXY_APPROVAL_HEADER = 'x-permit2-enabled';
+export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+
+const permit2Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'token', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [
+      { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' },
+      { name: 'nonce', type: 'uint48' },
+    ],
+  },
+] as const;
+
+export interface PreparedTransaction {
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value?: `0x${string}`;
+}
+
+export interface PreparedSwapPlan {
+  transactions: PreparedTransaction[];
+  amountIn: string;
+  amountOut: string;
+  approvalNeeded: boolean;
+}
 
 function getApiKey(): string {
   const key = process.env.UNISWAP_API_KEY;
@@ -11,11 +56,109 @@ function getApiKey(): string {
   return key;
 }
 
-function apiHeaders(): Record<string, string> {
-  return {
+function apiHeaders(options: { permit2Enabled?: boolean } = {}): Record<string, string> {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': getApiKey(),
     'x-universal-router-version': '2.0',
+  };
+
+  if (options.permit2Enabled === false) {
+    headers[PROXY_APPROVAL_HEADER] = 'false';
+  }
+
+  return headers;
+}
+
+function resolveSwapperAddress(swapper?: string): `0x${string}` {
+  if (swapper) {
+    if (!isValidAddress(swapper)) {
+      throw new Error(`Invalid swapper address: ${swapper}`);
+    }
+    return swapper as `0x${string}`;
+  }
+
+  return getWalletClient().account.address;
+}
+
+function normalizePreparedTransaction(value: unknown): PreparedTransaction | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = value as {
+    to?: unknown;
+    data?: unknown;
+    value?: unknown;
+  };
+
+  if (typeof candidate.to !== 'string' || !isValidAddress(candidate.to)) {
+    return null;
+  }
+  if (typeof candidate.data !== 'string' || !candidate.data.startsWith('0x') || candidate.data.length <= 2) {
+    return null;
+  }
+
+  if (candidate.value !== undefined && typeof candidate.value !== 'string') {
+    return null;
+  }
+
+  let normalizedValue: `0x${string}` | undefined;
+  if (typeof candidate.value === 'string') {
+    try {
+      const rawValue = candidate.value.trim();
+      const parsedValue = rawValue === '' ? BigInt(0) : BigInt(rawValue);
+      if (parsedValue > BigInt(0)) {
+        normalizedValue = `0x${parsedValue.toString(16)}`;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    to: candidate.to as `0x${string}`,
+    data: candidate.data as `0x${string}`,
+    ...(normalizedValue ? { value: normalizedValue } : {}),
+  };
+}
+
+export async function getCurrentPermit2Allowance(
+  token: string,
+  owner: string,
+  spender: string,
+): Promise<bigint> {
+  try {
+    const allowance = await getPublicClient().readContract({
+      address: PERMIT2_ADDRESS,
+      abi: permit2Abi,
+      functionName: 'allowance',
+      args: [owner as `0x${string}`, token as `0x${string}`, spender as `0x${string}`],
+    });
+    if (Array.isArray(allowance)) {
+      return BigInt(allowance[0] ?? 0);
+    }
+    return BigInt(0);
+  } catch {
+    return BigInt(0);
+  }
+}
+
+function buildPermit2ApprovalTransaction(
+  token: string,
+  spender: string,
+  amount: string,
+): PreparedTransaction {
+  return {
+    to: PERMIT2_ADDRESS,
+    data: encodeFunctionData({
+      abi: permit2Abi,
+      functionName: 'approve',
+      args: [
+        token as `0x${string}`,
+        spender as `0x${string}`,
+        BigInt(amount),
+        0,
+      ],
+    }),
   };
 }
 
@@ -82,13 +225,16 @@ export function resolveQuoteAmountOut(
   return '0';
 }
 
-export async function getQuote(req: SwapRequest): Promise<QuoteResult> {
+export async function getQuote(
+  req: SwapRequest,
+  options: { swapper?: string; permit2Enabled?: boolean } = {},
+): Promise<QuoteResult> {
   validateSwapRequest(req);
 
-  const walletClient = getWalletClient();
+  const swapper = resolveSwapperAddress(options.swapper);
   const res = await fetch(`${API_BASE}/v1/quote`, {
     method: 'POST',
-    headers: apiHeaders(),
+    headers: apiHeaders({ permit2Enabled: options.permit2Enabled }),
     body: JSON.stringify({
       type: 'EXACT_INPUT',
       amount: req.amount,
@@ -96,7 +242,7 @@ export async function getQuote(req: SwapRequest): Promise<QuoteResult> {
       tokenOut: req.tokenOut,
       tokenInChainId: req.chainId,
       tokenOutChainId: req.chainId,
-      swapper: walletClient.account.address,
+      swapper,
       slippageTolerance: req.slippage,
       autoSlippage: req.slippage ? undefined : 'DEFAULT',
       routingPreference: 'BEST_PRICE',
@@ -123,6 +269,43 @@ export async function getQuote(req: SwapRequest): Promise<QuoteResult> {
     quote: data.quote,
     permitData: data.permitData ?? undefined,
     gasEstimate: data.quote?.gasUseEstimate,
+  };
+}
+
+export async function prepareUserSwap(req: SwapRequest, walletAddress: string): Promise<PreparedSwapPlan> {
+  validateSwapRequest(req);
+  const swapper = resolveSwapperAddress(walletAddress);
+  const quoteResult = await getQuote(req, { swapper });
+
+  if (quoteResult.txFailureReason) {
+    throw new Error(quoteResult.txFailureReason);
+  }
+
+  const swapRes = await fetch(`${API_BASE}/v1/swap`, {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify({ quote: quoteResult.quote }),
+  });
+
+  if (!swapRes.ok) {
+    const body = await swapRes.text();
+    throw new Error(`Uniswap swap preparation failed (${swapRes.status}): ${body}`);
+  }
+
+  const { swap } = await swapRes.json();
+  const swapTx = normalizePreparedTransaction(swap);
+  if (!swapTx) {
+    throw new Error('Uniswap swap response missing transaction calldata');
+  }
+
+  return {
+    transactions: [
+      buildPermit2ApprovalTransaction(req.tokenIn, swapTx.to, req.amount),
+      swapTx,
+    ],
+    amountIn: req.amount,
+    amountOut: resolveQuoteAmountOut(quoteResult.quote, req.tokenOut),
+    approvalNeeded: true,
   };
 }
 

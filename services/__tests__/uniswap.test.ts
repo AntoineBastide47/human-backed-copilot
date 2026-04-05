@@ -10,6 +10,7 @@ vi.mock('../wallet', () => ({
     sendTransaction: vi.fn().mockResolvedValue('0xtxhash'),
   })),
   getPublicClient: vi.fn(() => ({
+    readContract: vi.fn().mockResolvedValue(BigInt('0')),
     waitForTransactionReceipt: vi.fn().mockResolvedValue({
       status: 'success',
       gasUsed: BigInt(21000),
@@ -586,6 +587,73 @@ describe('executeSwap', () => {
     const result = await executeSwap({ ...validRequest, chainId: 1 });
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unsupported chainId');
+  });
+});
+
+describe('prepareUserSwap', () => {
+  let prepareUserSwap: typeof import('../uniswap').prepareUserSwap;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    process.env.UNISWAP_API_KEY = 'test-key';
+    process.env.WORLD_CHAIN_RPC = 'https://rpc.example.com';
+    process.env.WALLET_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
+
+    ({ prepareUserSwap } = await import('../uniswap'));
+  });
+
+  it('prepends a Permit2 approval before the router call', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ quote: {} }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: {
+                data: '0xswap',
+                to: '0x2222222222222222222222222222222222222222',
+                from: '0x1111111111111111111111111111111111111111',
+              },
+            }),
+        }),
+    );
+
+    const result = await prepareUserSwap(validRequest, '0x1111111111111111111111111111111111111111');
+    expect(result.approvalNeeded).toBe(true);
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions[0].to).toBe('0x000000000022D473030F116dDEE9F6B43aC78BA3');
+    expect(result.transactions[1].to).toBe('0x2222222222222222222222222222222222222222');
+  });
+
+  it('normalizes decimal swap values to hex for MiniKit', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ quote: {} }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              swap: {
+                data: '0xswap',
+                to: '0x2222222222222222222222222222222222222222',
+                from: '0x1111111111111111111111111111111111111111',
+                value: '1000000000000000',
+              },
+            }),
+        }),
+    );
+
+    const result = await prepareUserSwap(validRequest, '0x1111111111111111111111111111111111111111');
+    expect(result.transactions[1]?.value).toBe('0x38d7ea4c68000');
   });
 });
 

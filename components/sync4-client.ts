@@ -37,7 +37,11 @@ export const STORAGE_KEYS = {
   walletAddress: 'hbc_walletAddress',
 } as const
 
-export type ProposalRecord = Proposal & { txHash?: string }
+export type ProposalRecord = Proposal & {
+  txHash?: string
+  tokenInBalance?: string
+  tokenOutBalance?: string
+}
 export type ExecutionRecord = Execution & { tokenIn?: string; tokenOut?: string }
 
 export class ApiError extends Error {

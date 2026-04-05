@@ -43,6 +43,9 @@ vi.mock('@/services/agent-runtime', () => ({
 vi.mock('@/services/uniswap', () => ({
   getQuote: vi.fn().mockResolvedValue({ quote: { quote: '900000000' } }),
 }));
+vi.mock('@/services/token-balances', () => ({
+  getTokenBalances: vi.fn(),
+}));
 vi.mock('@/lib/constants', () => ({
   WORLD_CHAIN_ID: 480,
   WORLD_ID_ACTION: 'register-agent',
@@ -57,6 +60,7 @@ import { db } from '@/lib/db';
 import { getSessionUserId, AuthError } from '@/lib/auth';
 import { runAgentCycleOnce, stopAgentLoop, syncAgentProposalsOnce } from '@/services/agent-runtime';
 import { getQuote } from '@/services/uniswap';
+import { getTokenBalances } from '@/services/token-balances';
 
 const mockGetSession = vi.mocked(getSessionUserId);
 const mockTransaction = vi.mocked(db.$transaction);
@@ -77,6 +81,7 @@ const mockStopAgentLoop = vi.mocked(stopAgentLoop);
 const mockRunAgentCycleOnce = vi.mocked(runAgentCycleOnce);
 const mockSyncAgentProposalsOnce = vi.mocked(syncAgentProposalsOnce);
 const mockGetQuote = vi.mocked(getQuote);
+const mockGetTokenBalances = vi.mocked(getTokenBalances);
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 const now = new Date();
@@ -112,6 +117,10 @@ async function json<T>(res: Response): Promise<T> {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetSession.mockResolvedValue('u1' as never);
+  mockGetTokenBalances.mockResolvedValue({
+    [dbProposal.tokenIn.toLowerCase()]: '750000000000000000',
+    [dbProposal.tokenOut.toLowerCase()]: '250000000',
+  } as never);
   process.env.AGENT_CLEANUP_SECRET = 'cleanup-secret';
   mockTransaction.mockImplementation(async (callback) => {
     if (typeof callback !== 'function') {
@@ -317,7 +326,8 @@ describe('POST /api/agents/[id]/strategies', () => {
         tokenOut: validStrategy.tokenOut,
         amount: validStrategy.amountPerInterval,
         chainId: 480,
-      })
+      }),
+      { swapper: dbAgent.walletAddress }
     );
     expect(mockRunAgentCycleOnce).toHaveBeenCalledWith('a1');
   });
@@ -606,6 +616,21 @@ describe('GET /api/agents/[id]/proposals', () => {
     );
     const call = mockProposalFindMany.mock.calls[0][0] as { where: Record<string, unknown> };
     expect(call.where).not.toHaveProperty('status');
+  });
+
+  it('includes token balances for the proposal wallet', async () => {
+    const res = await getProposals(
+      req('http://localhost/api/agents/a1/proposals?status=pending'),
+      { params: Promise.resolve({ id: 'a1' }) }
+    );
+    expect(res.status).toBe(200);
+    const data = await json<Array<{ tokenInBalance?: string; tokenOutBalance?: string }>>(res);
+    expect(data[0].tokenInBalance).toBe('750000000000000000');
+    expect(data[0].tokenOutBalance).toBe('250000000');
+    expect(mockGetTokenBalances).toHaveBeenCalledWith(
+      dbAgent.walletAddress,
+      [dbProposal.tokenIn, dbProposal.tokenOut],
+    );
   });
 });
 
