@@ -29,7 +29,10 @@ export const MOCK_STRATEGIES: AgentStrategy[] = [
     tokenIn: '0x4200000000000000000000000000000000000006',
     tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
     chainId: 480, amountPerInterval: '500000000000000000', interval: 'daily' as const,
-    autoExecute: false, status: 'active' as const, createdAt: new Date().toISOString(),
+    autoExecute: false, status: 'active' as const,
+    strategyType: 'dca' as const, targetAllocationBps: null, rebalanceBandBps: null,
+    maxSlippageBps: null, minNotionalUsd: null, cooldownMinutes: null, lastTriggeredAt: null,
+    metadata: {}, createdAt: new Date().toISOString(),
   },
 ];
 
@@ -41,7 +44,10 @@ export const MOCK_PROPOSALS: Proposal[] = [
     tokenOut: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1',
     amount: '500000000000000000', estimatedOutput: '925000000',
     reasoning: 'DCA #4 of daily WETH→USDC plan',
-    status: 'pending' as const, createdAt: new Date().toISOString(),
+    status: 'pending' as const,
+    triggerType: null, triggerSummary: null, notionalUsd: null,
+    expectedSlippageBps: null, marketSnapshot: null,
+    createdAt: new Date().toISOString(),
   },
 ];
 
