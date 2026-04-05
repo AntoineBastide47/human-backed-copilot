@@ -52,6 +52,14 @@ vi.mock('@/lib/constants', () => ({
   ENS_PARENT_NAME: 'provix.eth',
 }));
 vi.mock('@/lib/ens', () => ({
+  isAgentEnsAvailable: vi.fn().mockResolvedValue({
+    available: true,
+    ensName: 'agent-bbbbbb.provix.eth',
+    label: 'agent-bbbbbb',
+  }),
+  isAgentEnsRegistrationConfigured: vi.fn(() =>
+    Boolean(process.env.JUSTANAME_API_KEY || (process.env.L2_REGISTRAR_ADDRESS && process.env.SERVER_WALLET_PRIVATE_KEY))
+  ),
   registerAgentENS: vi.fn().mockResolvedValue('agent-bbbbbb.provix.eth'),
 }));
 
@@ -120,6 +128,9 @@ async function json<T>(res: Response): Promise<T> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.JUSTANAME_API_KEY;
+  delete process.env.L2_REGISTRAR_ADDRESS;
+  delete process.env.SERVER_WALLET_PRIVATE_KEY;
   mockGetSession.mockResolvedValue('u1' as never);
   mockGetTokenBalances.mockResolvedValue({
     [dbProposal.tokenIn.toLowerCase()]: '750000000000000000',
@@ -243,7 +254,7 @@ describe('POST /api/agents', () => {
   });
 
   it('fires ENS registration with wallet from verified user', async () => {
-    const { registerAgentENS } = await import('@/lib/ens');
+    const { isAgentEnsAvailable, registerAgentENS } = await import('@/lib/ens');
     process.env.JUSTANAME_API_KEY = 'test-key';
 
     await postAgent(req('http://localhost/api/agents', {
@@ -251,8 +262,10 @@ describe('POST /api/agents', () => {
       body: JSON.stringify({}),
     }));
 
-    // Let the fire-and-forget microtask queue drain
-    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(isAgentEnsAvailable)).toHaveBeenCalledWith(
+      dbUser.walletAddress,
+      'agent-bbbbbb',
+    );
 
     expect(vi.mocked(registerAgentENS)).toHaveBeenCalledWith(
       dbUser.walletAddress,
@@ -263,11 +276,14 @@ describe('POST /api/agents', () => {
       }),
       'agent-bbbbbb',
     );
+    expect(vi.mocked(registerAgentENS).mock.invocationCallOrder[0]).toBeLessThan(
+      mockAgentCreate.mock.invocationCallOrder[0],
+    );
 
     delete process.env.JUSTANAME_API_KEY;
   });
 
-  it('persists ENS name to agent after successful registration', async () => {
+  it('stores the registered ENS name on the newly created agent', async () => {
     process.env.JUSTANAME_API_KEY = 'test-key';
 
     await postAgent(req('http://localhost/api/agents', {
@@ -275,20 +291,20 @@ describe('POST /api/agents', () => {
       body: JSON.stringify({}),
     }));
 
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockAgentUpdate).toHaveBeenCalledWith(
+    expect(mockAgentCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: dbAgent.id },
-        data: { ensName: 'agent-bbbbbb.provix.eth' },
+        data: expect.objectContaining({
+          ensName: 'agent-bbbbbb.provix.eth',
+        }),
       }),
     );
+    expect(mockAgentUpdate).not.toHaveBeenCalled();
 
     delete process.env.JUSTANAME_API_KEY;
   });
 
   it('passes a custom ENS label override through to registration', async () => {
-    const { registerAgentENS } = await import('@/lib/ens');
+    const { isAgentEnsAvailable, registerAgentENS } = await import('@/lib/ens');
     process.env.JUSTANAME_API_KEY = 'test-key';
 
     await postAgent(req('http://localhost/api/agents', {
@@ -296,7 +312,10 @@ describe('POST /api/agents', () => {
       body: JSON.stringify({ ensName: 'desk-trader' }),
     }));
 
-    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(isAgentEnsAvailable)).toHaveBeenCalledWith(
+      dbUser.walletAddress,
+      'desk-trader',
+    );
 
     expect(vi.mocked(registerAgentENS)).toHaveBeenCalledWith(
       dbUser.walletAddress,
@@ -311,7 +330,29 @@ describe('POST /api/agents', () => {
     delete process.env.JUSTANAME_API_KEY;
   });
 
-  it('agent creation succeeds even when ENS registration throws', async () => {
+  it('returns 409 when the requested ENS name is already taken', async () => {
+    const { isAgentEnsAvailable, registerAgentENS } = await import('@/lib/ens');
+    vi.mocked(isAgentEnsAvailable).mockResolvedValueOnce({
+      available: false,
+      ensName: 'the-first-one.provix.eth',
+      label: 'the-first-one',
+    } as never);
+    process.env.JUSTANAME_API_KEY = 'test-key';
+
+    const res = await postAgent(req('http://localhost/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({ ensName: 'the-first-one' }),
+    }));
+
+    expect(res.status).toBe(409);
+    expect(await json<{ error: string }>(res)).toEqual({
+      error: 'ENS name the-first-one.provix.eth is already taken',
+    });
+    expect(vi.mocked(registerAgentENS)).not.toHaveBeenCalled();
+    expect(mockAgentCreate).not.toHaveBeenCalled();
+  });
+
+  it('fails agent creation when ENS registration throws', async () => {
     const { registerAgentENS } = await import('@/lib/ens');
     vi.mocked(registerAgentENS).mockRejectedValueOnce(new Error('JustaName timeout'));
     process.env.JUSTANAME_API_KEY = 'test-key';
@@ -321,15 +362,17 @@ describe('POST /api/agents', () => {
       body: JSON.stringify({}),
     }));
 
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect(await json<{ error: string }>(res)).toEqual({
+      error: 'Unable to register ENS name right now',
+    });
+    expect(mockAgentCreate).not.toHaveBeenCalled();
 
     delete process.env.JUSTANAME_API_KEY;
   });
 
   it('skips ENS registration when no JUSTANAME_API_KEY or L2_REGISTRAR_ADDRESS', async () => {
-    const { registerAgentENS } = await import('@/lib/ens');
+    const { isAgentEnsAvailable, registerAgentENS } = await import('@/lib/ens');
     delete process.env.JUSTANAME_API_KEY;
     delete process.env.L2_REGISTRAR_ADDRESS;
 
@@ -338,9 +381,15 @@ describe('POST /api/agents', () => {
       body: JSON.stringify({}),
     }));
 
-    await new Promise((r) => setTimeout(r, 0));
-
+    expect(vi.mocked(isAgentEnsAvailable)).not.toHaveBeenCalled();
     expect(vi.mocked(registerAgentENS)).not.toHaveBeenCalled();
+    expect(mockAgentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ensName: null,
+        }),
+      }),
+    );
   });
 });
 

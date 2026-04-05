@@ -79,6 +79,14 @@ vi.mock('@/lib/constants', () => ({
   ENS_PARENT_NAME: 'provix.eth',
 }));
 vi.mock('@/lib/ens', () => ({
+  isAgentEnsAvailable: vi.fn().mockResolvedValue({
+    available: true,
+    ensName: 'agent-aaaaaa.provix.eth',
+    label: 'agent-aaaaaa',
+  }),
+  isAgentEnsRegistrationConfigured: vi.fn(() =>
+    Boolean(process.env.JUSTANAME_API_KEY || (process.env.L2_REGISTRAR_ADDRESS && process.env.SERVER_WALLET_PRIVATE_KEY))
+  ),
   registerAgentENS: vi.fn().mockResolvedValue('agent-aaaaaa.provix.eth'),
 }));
 

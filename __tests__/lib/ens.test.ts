@@ -6,6 +6,7 @@ vi.mock('@/lib/constants', () => ({
 
 // ── JustaName mock ─────────────────────────────────────────────────────────────
 const mockAddSubname = vi.fn();
+const mockIsSubnameAvailable = vi.fn();
 const mockGetPrimaryNameByAddress = vi.fn();
 const mockGetRecords = vi.fn();
 
@@ -14,6 +15,7 @@ vi.mock('@justaname.id/sdk', () => ({
     init: vi.fn(() => ({
       subnames: {
         addSubname: mockAddSubname,
+        isSubnameAvailable: mockIsSubnameAvailable,
         getPrimaryNameByAddress: mockGetPrimaryNameByAddress,
         getRecords: mockGetRecords,
       },
@@ -23,6 +25,7 @@ vi.mock('@justaname.id/sdk', () => ({
 
 // ── viem mock (on-chain path) ──────────────────────────────────────────────────
 const mockWriteContract = vi.fn();
+const mockReadContract = vi.fn();
 const mockWaitForTransactionReceipt = vi.fn();
 
 vi.mock('viem', async (importOriginal) => {
@@ -30,7 +33,10 @@ vi.mock('viem', async (importOriginal) => {
   return {
     ...actual,
     createWalletClient: vi.fn(() => ({ writeContract: mockWriteContract })),
-    createPublicClient: vi.fn(() => ({ waitForTransactionReceipt: mockWaitForTransactionReceipt })),
+    createPublicClient: vi.fn(() => ({
+      readContract: mockReadContract,
+      waitForTransactionReceipt: mockWaitForTransactionReceipt,
+    })),
     http: vi.fn(),
   };
 });
@@ -54,6 +60,49 @@ beforeEach(() => {
   delete process.env.SERVER_WALLET_PRIVATE_KEY;
   process.env.MAINNET_RPC = 'https://eth.llamarpc.com';
   process.env.JUSTANAME_API_KEY = 'test-api-key';
+});
+
+// ── isAgentEnsAvailable ────────────────────────────────────────────────────────
+
+describe('isAgentEnsAvailable', () => {
+  it('checks offchain availability with the full subname', async () => {
+    mockIsSubnameAvailable.mockResolvedValue({ isAvailable: true });
+
+    const { isAgentEnsAvailable } = await import('@/lib/ens');
+    const result = await isAgentEnsAvailable(WALLET, 'Desk-Trader');
+
+    expect(result).toEqual({
+      available: true,
+      ensName: 'desk-trader.provix.eth',
+      label: 'desk-trader',
+    });
+    expect(mockIsSubnameAvailable).toHaveBeenCalledWith({
+      subname: 'desk-trader.provix.eth',
+      chainId: 1,
+    });
+  });
+
+  it('checks on-chain availability through the registrar when configured', async () => {
+    process.env.L2_REGISTRAR_ADDRESS = '0x35bC7e7AcF86F9c25ec7622ceAB63DF1ac32c31a';
+    process.env.SERVER_WALLET_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
+    mockReadContract.mockResolvedValue(true);
+
+    const { isAgentEnsAvailable } = await import('@/lib/ens');
+    const result = await isAgentEnsAvailable(WALLET, 'the-first-one');
+
+    expect(result).toEqual({
+      available: true,
+      ensName: 'the-first-one.provix.eth',
+      label: 'the-first-one',
+    });
+    expect(mockReadContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: 'available',
+        args: ['the-first-one'],
+      }),
+    );
+    expect(mockIsSubnameAvailable).not.toHaveBeenCalled();
+  });
 });
 
 // ── registerAgentENS ───────────────────────────────────────────────────────────

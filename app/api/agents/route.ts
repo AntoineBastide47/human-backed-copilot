@@ -5,7 +5,11 @@ import { E, isValidAddress } from '@/lib/api-response';
 import { toAgentResponse } from '@/lib/agent-service';
 import { verifyAgentIsHuman } from '@/services/agentkit';
 import { DEFAULT_SPEND_LIMITS } from '@/lib/spend-limits';
-import { registerAgentENS } from '@/lib/ens';
+import {
+  isAgentEnsAvailable,
+  isAgentEnsRegistrationConfigured,
+  registerAgentENS,
+} from '@/lib/ens';
 import { normalizeAgentEnsLabel } from '@/lib/ens-name';
 import type { Agent } from '@/types';
 
@@ -59,6 +63,7 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     return E.forbidden('Verified World wallet address missing. Verify with World App again.');
   }
   const requestedEnsLabel = normalizeAgentEnsLabel(ensName, walletAddress);
+  let resolvedEnsName: string | null = null;
 
   if (!isDemoMode) {
     const isRegistered = await verifyAgentIsHuman(walletAddress);
@@ -69,32 +74,38 @@ export async function POST(req: Request): Promise<NextResponse<Agent | { error: 
     }
   }
 
+  if (isAgentEnsRegistrationConfigured()) {
+    const availability = await isAgentEnsAvailable(walletAddress, requestedEnsLabel);
+    if (!availability.available) {
+      return E.conflict(`ENS name ${availability.ensName} is already taken`);
+    }
+
+    try {
+      resolvedEnsName = await registerAgentENS(
+        walletAddress,
+        {
+          strategy: 'dca',
+          worldIdVerified: user.isVerified,
+          owner: user.walletAddress,
+        },
+        requestedEnsLabel,
+      );
+    } catch (err) {
+      console.error('[ENS] registerAgentENS failed:', err);
+      return E.badRequest('Unable to register ENS name right now');
+    }
+  }
+
   const agent = await db.agent.create({
     data: {
       ownerId: userId,
       walletAddress,
-      ensName: ensName || null,
+      ensName: resolvedEnsName,
       status: 'active',
       agentbookRegId: null,
       spendLimits: spendLimits ?? DEFAULT_SPEND_LIMITS,
     },
   });
-
-  // Register ENS subname under provix.eth — non-fatal if it fails
-  if (process.env.JUSTANAME_API_KEY || process.env.L2_REGISTRAR_ADDRESS) {
-    registerAgentENS(walletAddress, {
-      strategy: 'dca',
-      worldIdVerified: user.isVerified,
-      owner: user.walletAddress,
-    }, requestedEnsLabel)
-      .then(async (resolvedEnsName) => {
-        await db.agent.update({
-          where: { id: agent.id },
-          data: { ensName: resolvedEnsName },
-        })
-      })
-      .catch((err) => console.error('[ENS] registerAgentENS failed:', err))
-  }
 
   return NextResponse.json(toAgentResponse(agent), { status: 201 });
 }

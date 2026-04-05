@@ -10,6 +10,13 @@ import { ENS_PARENT_NAME } from './constants'
 import { normalizeAgentEnsLabel, toAgentEnsName } from './ens-name'
 
 const MAINNET_CHAIN_ID = 1
+const BASE_RPC_URL = process.env.BASE_RPC ?? 'https://mainnet.base.org'
+
+type AgentEnsMeta = {
+  strategy: string
+  worldIdVerified: boolean
+  owner: string
+}
 
 // ── JustaName client (offchain reads + fallback writes) ───────────────────────
 let _client: ReturnType<typeof JustaName.init> | null = null
@@ -31,11 +38,26 @@ function getClient() {
   return _client
 }
 
+function hasOnChainRegistrarConfig(): boolean {
+  return Boolean(process.env.L2_REGISTRAR_ADDRESS && process.env.SERVER_WALLET_PRIVATE_KEY)
+}
+
+function hasOffchainRegistrarConfig(): boolean {
+  return Boolean(process.env.JUSTANAME_API_KEY)
+}
+
+function getBasePublicClient() {
+  return createPublicClient({
+    chain: base,
+    transport: http(BASE_RPC_URL),
+  })
+}
+
 // ── Offchain write via JustaName (primary — zero gas) ─────────────────────────
 async function registerOffchain(
   username: string,
   agentAddress: string,
-  meta: { strategy: string; worldIdVerified: boolean; owner: string },
+  meta: AgentEnsMeta,
 ): Promise<void> {
   await getClient().subnames.addSubname({
     username,
@@ -59,7 +81,7 @@ const REGISTRAR_ABI = parseAbi([
 async function registerOnChain(
   label: string,
   agentAddress: string,
-  meta: { worldIdVerified: boolean; owner: string },
+  meta: AgentEnsMeta,
 ): Promise<void> {
   const pk = process.env.SERVER_WALLET_PRIVATE_KEY as `0x${string}`
   const registrarAddress = process.env.L2_REGISTRAR_ADDRESS as `0x${string}`
@@ -68,12 +90,9 @@ async function registerOnChain(
   const walletClient = createWalletClient({
     account,
     chain: base,
-    transport: http(process.env.BASE_RPC ?? 'https://mainnet.base.org'),
+    transport: http(BASE_RPC_URL),
   })
-  const publicClient = createPublicClient({
-    chain: base,
-    transport: http(process.env.BASE_RPC ?? 'https://mainnet.base.org'),
-  })
+  const publicClient = getBasePublicClient()
 
   const hash = await walletClient.writeContract({
     address: registrarAddress,
@@ -83,6 +102,57 @@ async function registerOnChain(
   })
 
   await publicClient.waitForTransactionReceipt({ hash })
+}
+
+async function isLabelAvailableOffchain(label: string): Promise<boolean> {
+  const result = await getClient().subnames.isSubnameAvailable({
+    subname: toAgentEnsName(label),
+    chainId: MAINNET_CHAIN_ID,
+  })
+
+  return result.isAvailable
+}
+
+async function isLabelAvailableOnChain(label: string): Promise<boolean> {
+  const publicClient = getBasePublicClient()
+  const registrarAddress = process.env.L2_REGISTRAR_ADDRESS as `0x${string}`
+
+  return publicClient.readContract({
+    address: registrarAddress,
+    abi: REGISTRAR_ABI,
+    functionName: 'available',
+    args: [label],
+  })
+}
+
+export function isAgentEnsRegistrationConfigured(): boolean {
+  return hasOnChainRegistrarConfig() || hasOffchainRegistrarConfig()
+}
+
+export async function isAgentEnsAvailable(
+  agentAddress: string,
+  requestedLabel?: string,
+): Promise<{ available: boolean; ensName: string; label: string }> {
+  const label = normalizeAgentEnsLabel(requestedLabel, agentAddress)
+  const ensName = toAgentEnsName(label)
+
+  if (hasOnChainRegistrarConfig()) {
+    return {
+      available: await isLabelAvailableOnChain(label),
+      ensName,
+      label,
+    }
+  }
+
+  if (hasOffchainRegistrarConfig()) {
+    return {
+      available: await isLabelAvailableOffchain(label),
+      ensName,
+      label,
+    }
+  }
+
+  throw new Error('ENS registration is not configured')
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -97,15 +167,17 @@ async function registerOnChain(
  */
 export async function registerAgentENS(
   agentAddress: string,
-  meta: { strategy: string; worldIdVerified: boolean; owner: string },
+  meta: AgentEnsMeta,
   requestedLabel?: string,
 ): Promise<string> {
   const label = normalizeAgentEnsLabel(requestedLabel, agentAddress)
 
-  if (process.env.L2_REGISTRAR_ADDRESS && process.env.SERVER_WALLET_PRIVATE_KEY) {
+  if (hasOnChainRegistrarConfig()) {
     await registerOnChain(label, agentAddress, meta)
-  } else {
+  } else if (hasOffchainRegistrarConfig()) {
     await registerOffchain(label, agentAddress, meta)
+  } else {
+    throw new Error('ENS registration is not configured')
   }
 
   return toAgentEnsName(label)
