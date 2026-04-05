@@ -1,4 +1,4 @@
-import { getQuote } from './uniswap';
+import { getQuote, resolveQuoteAmountOut } from './uniswap';
 import { getTokenDecimals } from './portfolio';
 import { WORLD_USDC } from '@/lib/constants';
 import type { MarketSnapshotData, TokenPrice, AgentStrategy } from '@/types';
@@ -52,7 +52,7 @@ export async function getTokenUsdcPrice(
     amount: oneUnit.toString(),
   });
 
-  const output = quoteResult.quote?.quote ?? quoteResult.quote?.quoteDecimals ?? '0';
+  const output = resolveQuoteAmountOut(quoteResult.quote, WORLD_USDC);
 
   const price: TokenPrice = {
     token: key,

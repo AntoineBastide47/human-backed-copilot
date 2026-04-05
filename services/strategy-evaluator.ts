@@ -66,7 +66,7 @@ export function evaluateDcaStrategy(
     notionalUsd,
     triggerType: 'interval_due',
     triggerSummary: `${strategy.interval} DCA interval reached`,
-    reasoning: `DCA: ${strategy.name} — ${strategy.interval} buy of ${strategy.amountPerInterval} ${strategy.tokenIn}`,
+    reasoning: `DCA: ${strategy.name} — ${strategy.interval} buy of ${formatHumanAmount(strategy.amountPerInterval, strategy.tokenIn)} ${tokenSymbolOrAddress(strategy.tokenIn)}`,
     marketSnapshot: buildMarketSnapshotPayload(strategy, portfolio, market),
   };
 }
@@ -213,6 +213,17 @@ function isInCooldown(strategy: AgentStrategy): boolean {
   const cooldownMs = strategy.cooldownMinutes * 60 * 1000;
   const lastTriggered = new Date(strategy.lastTriggeredAt).getTime();
   return Date.now() - lastTriggered < cooldownMs;
+}
+
+function formatHumanAmount(rawAmount: string, tokenAddress: string): string {
+  const decimals = getTokenDecimals(tokenAddress);
+  const raw = BigInt(rawAmount);
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const whole = raw / divisor;
+  const remainder = raw % divisor;
+  if (remainder === BigInt(0)) return whole.toString();
+  const frac = remainder.toString().padStart(decimals, '0').replace(/0+$/, '');
+  return `${whole}.${frac}`;
 }
 
 function tokenSymbolOrAddress(address: string): string {
